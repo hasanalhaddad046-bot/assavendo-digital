@@ -1,30 +1,55 @@
+import crypto from "node:crypto";
 import { after } from "next/server";
-import { registerWebhookEvent, verifySignature, processVerifiedPayment } from "@/lib/paystack";
+import { handlePaystackEvent, persistWebhookEvent, verifySignature } from "@/lib/paystack";
 
 export const runtime = "nodejs";
 
+type PaystackEvent = {
+  event?: string;
+  data?: Record<string, unknown>;
+};
+
 export async function POST(req: Request) {
-  // Corps BRUT obligatoire pour la signature.
   const raw = await req.text();
-  if (!verifySignature(raw, req.headers.get("x-paystack-signature"))) {
+  const modernSignature = req.headers.get("paystack-signature");
+  const legacySignature = req.headers.get("x-paystack-signature");
+  const headerName = modernSignature ? "paystack-signature" : "x-paystack-signature";
+  const signature = modernSignature ?? legacySignature;
+  if (!verifySignature(raw, signature, headerName)) {
     return Response.json({ ok: false }, { status: 401 });
   }
-  let ev: { event?: string; data?: { id?: number | string; reference?: string } };
+
+  let payload: PaystackEvent;
   try {
-    ev = JSON.parse(raw);
+    payload = JSON.parse(raw) as PaystackEvent;
   } catch {
     return Response.json({ ok: false }, { status: 400 });
   }
-  if (!ev.event) return Response.json({ ok: false }, { status: 400 });
-
-  const ref = ev.data?.reference ?? "";
-  const key = `${ev.event}:${ev.data?.id ?? ref}`;
-  const isNew = await registerWebhookEvent(key, ev.event);
-  if (!isNew) return Response.json({ ok: true, duplicate: true });
-
-  if (ev.event === "charge.success" && ref) {
-    // Réponse rapide ; vérification API en arrière-plan.
-    after(() => processVerifiedPayment(ref));
+  if (!payload.event || typeof payload.event !== "string" || !payload.data) {
+    return Response.json({ ok: false }, { status: 400 });
   }
-  return Response.json({ ok: true });
+
+  const eventKey = crypto.createHash("sha256").update(raw, "utf8").digest("hex");
+  // Persist the raw signed event before acknowledging it. Failed/stale processing
+  // remains durable and is retried by /api/cron/process-webhooks.
+  try {
+    await persistWebhookEvent(eventKey, payload.event, payload as Record<string, unknown>);
+  } catch (error) {
+    console.error("Could not persist Paystack webhook", error);
+    return Response.json({ ok: false }, { status: 503 });
+  }
+
+  after(async () => {
+    try {
+      await handlePaystackEvent(eventKey, payload.event!, payload as Record<string, unknown>);
+    } catch (error) {
+      console.error("Paystack webhook processing failed", {
+        event: payload.event,
+        eventKey,
+        message: error instanceof Error ? error.message : "Unknown error",
+      });
+    }
+  });
+
+  return Response.json({ ok: true, accepted: true });
 }

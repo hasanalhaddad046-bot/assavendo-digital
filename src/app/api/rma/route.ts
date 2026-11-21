@@ -6,7 +6,13 @@ export const runtime = "nodejs";
 
 // Demande de retour / échange / colis endommagé ou perdu. Identification : numéro de commande + e-mail.
 export async function POST(req: Request) {
-  if (!rateLimit(`rma:${clientIp(req)}`, 5, 3600_000)) return Response.json({ error: "Trop de demandes." }, { status: 429 });
+  try {
+    if (!(await rateLimit(`rma:${clientIp(req)}`, 5, 3600_000))) {
+      return Response.json({ error: "Trop de demandes." }, { status: 429 });
+    }
+  } catch {
+    return Response.json({ error: "Le contrôle de sécurité est temporairement indisponible. Réessayez plus tard." }, { status: 503 });
+  }
   const b = (await req.json().catch(() => null)) as
     | { number?: number | string; email?: string; kind?: string; reason?: string; itemId?: string }
     | null;

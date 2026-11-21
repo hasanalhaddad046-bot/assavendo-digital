@@ -10,8 +10,11 @@ export default async function PanelLayout({ children }: { children: React.ReactN
     <div className="admin" style={{ padding: "24px 0" }}>
       <nav className="row" style={{ marginBottom: 16 }}>
         <Link href="/admin">Tableau de bord</Link>
-        <Link href="/admin/commandes">Commandes</Link>
+        <Link href="/admin/commandes">Commandes et logistique</Link>
         <Link href="/admin/produits">Produits</Link>
+        <Link href="/admin/ia">Copilote IA</Link>
+        <Link href="/admin/numerique-services">Numérique / services</Link>
+        <Link href="/admin/finances">Trésorerie</Link>
         <Link href="/admin/fournisseurs">Fournisseurs</Link>
         <Link href="/admin/agences">Agences</Link>
         <Link href="/admin/retours">Retours</Link>

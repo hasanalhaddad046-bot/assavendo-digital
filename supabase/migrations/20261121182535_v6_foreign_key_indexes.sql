@@ -1,0 +1,21 @@
+-- V6 performance follow-up: cover every foreign key reported by Supabase advisor.
+create index if not exists ai_approvals_tool_run_idx on public.ai_approvals(tool_run_id);
+create index if not exists ai_conversations_user_idx on public.ai_conversations(user_id);
+create index if not exists ai_tool_runs_conversation_idx on public.ai_tool_runs(conversation_id);
+create index if not exists customer_wishlists_product_idx on public.customer_wishlists(product_id);
+create index if not exists digital_deliveries_asset_idx on public.digital_deliveries(asset_id);
+create index if not exists digital_deliveries_user_idx on public.digital_deliveries(user_id);
+create index if not exists order_items_variant_idx on public.order_items(variant_id);
+create index if not exists orders_user_idx on public.orders(user_id);
+create index if not exists price_calculations_selected_offer_idx on public.price_calculations(selected_offer_id);
+create index if not exists product_variants_selected_offer_idx on public.product_variants(selected_offer_id);
+create index if not exists products_selected_offer_idx on public.products(selected_offer_id);
+create index if not exists purchase_order_items_agency_idx on public.purchase_order_items(agency_id);
+create index if not exists purchase_order_items_offer_idx on public.purchase_order_items(offer_id);
+create index if not exists purchase_order_items_variant_idx on public.purchase_order_items(variant_id);
+create index if not exists purchase_orders_agency_idx on public.purchase_orders(agency_id);
+create index if not exists service_tasks_assigned_supplier_idx on public.service_tasks(assigned_supplier_id);
+create index if not exists shipment_packages_agency_idx on public.shipment_packages(agency_id);
+create index if not exists support_tickets_order_idx on public.support_tickets(order_id);
+create index if not exists support_tickets_user_idx on public.support_tickets(user_id);
+create index if not exists workflow_runs_workflow_idx on public.workflow_runs(workflow_id);

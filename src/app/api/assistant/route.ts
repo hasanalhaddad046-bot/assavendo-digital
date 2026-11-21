@@ -6,7 +6,13 @@ export const runtime = "nodejs";
 
 // Assistant client : répond avec le catalogue publié uniquement. Jamais de prix inventé.
 export async function POST(req: Request) {
-  if (!rateLimit(`ai:${clientIp(req)}`, 15, 10 * 60_000)) return Response.json({ error: "Trop de questions." }, { status: 429 });
+  try {
+    if (!(await rateLimit(`ai:${clientIp(req)}`, 15, 10 * 60_000))) {
+      return Response.json({ error: "Trop de questions." }, { status: 429 });
+    }
+  } catch {
+    return Response.json({ error: "Le service est temporairement indisponible. Réessayez plus tard." }, { status: 503 });
+  }
   const b = (await req.json().catch(() => null)) as { question?: string } | null;
   const q = (b?.question ?? "").trim().slice(0, 500);
   if (!q) return Response.json({ error: "Question vide." }, { status: 400 });
