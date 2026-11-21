@@ -82,27 +82,15 @@ Ne pas lancer de déploiement ni ouvrir les paiements réels avant :
 - Les exécutions qui ne sont pas des brouillons automatiques nécessitent une approbation humaine. La tâche planifiée reprend les exécutions interrompues et applique un plafond de tentatives.
 - Les workflows doivent être testés sur des événements réels non financiers avant activation à grande échelle.
 
-## Mise à jour du framework
-
-- Next.js a été migré de la ligne 15 vers `16.4.6` ; `middleware.ts` a été migré vers `proxy.ts` conformément à la convention Next.js 16.
-- `npm audit` ne signale aucune vulnérabilité après la mise à niveau.
-
-
-## Mise à niveau framework / sécurité dépendances
-
-- Next.js est mis à niveau vers `16.4.6` ; le middleware a été renommé en `proxy.ts` selon la convention Next.js 16.
-- `npm audit` ne rapporte aucune vulnérabilité après la mise à niveau.
-- Tests vérifiés : 27 tests unitaires, TypeScript et build de production.
-
-
 ## Framework et sécurité des dépendances
 
-- Next.js a été mis à niveau vers `16.4.6` et `middleware.ts` migré vers `proxy.ts` selon la convention Next.js 16.
+- Next.js a été mis à niveau vers `16.4.6` ; `middleware.ts` a été migré vers `proxy.ts` selon la convention Next.js 16.
 - `npm audit` ne rapporte aucune vulnérabilité après cette mise à niveau.
-- Dernière vérification : 27 tests unitaires, TypeScript et build de production réussis.
+- Dernière vérification : 27 tests unitaires, vérification TypeScript et build de production réussis.
 
 ## Automatisations V6.1
 
 - Déclencheurs journalisés et idempotents : paiement vérifié, revue antifraude, transport et demande de retour.
 - Actions autorisées : note interne ou brouillon d’e-mail non envoyé uniquement. Aucun achat, paiement, remboursement, changement de prix, publication ou envoi d’e-mail ne peut être déclenché par le moteur.
-- Les opérations exigeant une approbation attendent la validation humaine. Le cron quotidien reprend les exécutions interrompues ; la cadence quotidienne est conservée pour rester compatible avec l’offre Vercel observée.
+- Les opérations exigeant une approbation attendent la validation humaine. Le cron quotidien reprend les exécutions interrompues ; la fréquence reste quotidienne pour respecter l’offre Vercel observée.
+- Les exécutions réelles restent à tester une fois les secrets, les comptes e-mail et les données opérationnelles configurés.
