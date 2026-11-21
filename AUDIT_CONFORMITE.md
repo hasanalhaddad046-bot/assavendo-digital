@@ -1,85 +1,49 @@
-# Audit de conformité — Cahier des charges V6 (état au 21/11/2026)
+# Audit de conformité — Cahier des charges V6 (mis à jour le 21/11/2026)
 
-Légende : ✅ fait · 🟡 partiel · ❌ non fait · 👤 action requise de votre part
+Légende : ✅ fait · 🟡 partiel · ❌ non fait · 👤 action de votre part
+**Important : ce code n'a pas pu être compilé ici (pas d'accès réseau pour installer les dépendances).** Seuls les 8 tests du moteur (prix, risque, monnaie) ont été exécutés. La compilation réelle aura lieu au premier déploiement Vercel depuis GitHub ; des corrections mineures de build sont possibles.
 
-## 1. Socle technique et sécurité
-| Point | État | Détail |
-|---|---|---|
-| Stack Next.js + Supabase + Vercel | ✅ | Déployé (build READY, HTTP 200, aucune erreur runtime) |
-| Schéma BDD + RLS partout | ✅ | Seuls catégories et produits publiés sont lisibles publiquement |
-| Clés serveur jamais exposées | ✅ | service_role et Paystack côté serveur uniquement |
-| En-têtes de sécurité | ✅ | CSP/HSTS/etc. dans next.config.mjs |
-| Variables d'environnement Vercel | 👤 | Ajouter SUPABASE_SERVICE_ROLE_KEY et PAYSTACK_SECRET_KEY dans le tableau de bord Vercel |
-| Accès public au site | 👤 | Vercel Authentication bloque *.vercel.app (webhooks inclus) : domaine personnalisé ou désactiver la protection |
-| Dépôt GitHub | ❌ 👤 | Aucun dépôt visible/accessible (jeton GitHub invalide côté sandbox) : créer un dépôt vide et me donner son nom, ou le pousser vous-même |
+## Socle
+| Point | État |
+|---|---|
+| Next.js + Supabase + Vercel, RLS partout, en-têtes de sécurité | ✅ |
+| Schéma 0001 + 0002 appliqués sur Supabase | ✅ |
+| 38 catégories (alimentation désactivée) | ✅ |
+| Dépôt GitHub poussé (main) | ✅ |
+| Déploiement automatique GitHub → Vercel | 👤 Ajouter GitHub dans Vercel (Account Settings → Authentication) puis relier le dépôt |
 
-## 2. Argent, prix, devises
-| Point | État | Détail |
-|---|---|---|
-| Montants en unités mineures entières | ✅ | money.ts |
-| Formule de prix corrigée (marge sur prix de vente) | ✅ | 8 tests passent |
-| Frais Paystack non codés en dur | ✅ | paystack_fee_pct obligatoire (👤 à renseigner) |
-| Taux de change quotidiens, secours, jamais inventés | ✅ | Cron 05:00 UTC ; 🟡 snapshot pas encore rempli tant que le cron n'a pas tourné |
-| Prix fournisseur saisi en devise source, conversion auto en USD | 🟡 | Moteur prêt (toUsd) ; pas d'interface de saisie |
-| Affichage en devise locale indicative | 🟡 | usdToLocal prêt ; page produit à brancher complètement |
+## Argent / prix / devises
+| Moteur de prix déterministe, marge sur prix de vente, frais obligatoires | ✅ testé |
+| Prix source en devise d'origine → USD automatique (calcul du prix dans l'admin) | ✅ |
+| Taux quotidiens avec secours, jamais inventés ; affichage local indicatif | ✅ (👤 premier cron à 05:00 UTC) |
+| Panier multi-articles, frais de livraison par pays/produit | ✅ |
 
-## 3. Paiement Paystack
-| Point | État | Détail |
-|---|---|---|
-| Signature HMAC-SHA512 sur corps brut | ✅ | |
-| Idempotence des webhooks | ✅ | clé unique |
-| Vérification API montant/devise/référence | ✅ | |
-| Verrou dropshipping (autorisation écrite requise) | ✅ | checkout renvoie 503 tant que non approuvé |
-| Autorisation écrite Paystack | 👤 | À obtenir avant toute vente de produits physiques |
-| Remboursements via Paystack | ❌ | |
+## Paiement
+| Signature, idempotence, vérification API, verrou dropshipping | ✅ |
+| Remboursements via Paystack depuis l'admin | ✅ (non testé en réel) |
+| Autorisation écrite Paystack | 👤 |
 
-## 4. Catalogue
-| Point | État | Détail |
-|---|---|---|
-| 38 catégories (13 physiques, 10 numériques, 15 services) | ✅ | Insérées en base aujourd'hui ; « Alimentation » désactivée par défaut |
-| Produits, fournisseurs, offres (modes A/B/C) | 🟡 | Tables prêtes, aucune interface d'administration |
-| Matrice pays/produit, DDP/DAP | 🟡 | Données et texte prévus ; affichage par pays non terminé |
-| Annuaire d'agences / adresses d'entrepôts en Chine | ❌ | |
-| Fiche d'achat et réexpédition | ❌ | |
+## Catalogue / logistique
+| Back-office : produits, offres, fournisseurs, agences, paramètres | ✅ |
+| Matrice pays/produit, DDP/DAP, délais, publication bloquée si incomplète | ✅ |
+| Fiche d'achat (référence fournisseur, agence, transporteur, suivi) | ✅ |
+| Annuaire d'agences | 🟡 structure prête ; adresses réelles à saisir par vous (aucune inventée) |
+| Offre figée (instantané) à la vente | ✅ |
 
-## 5. Commande et client
-| Point | État | Détail |
-|---|---|---|
-| Achat d'un produit (checkout serveur) | ✅ | Prix lu en base, jamais du client |
-| Panier multi-articles | ❌ | |
-| Comptes clients, suivi de commande | ❌ | |
-| E-mails de notification | ❌ | |
-| Facturation / TVA / numérotation | ❌ | |
-| Retours (RMA) avec provision | 🟡 | Provision dans le prix ; pas de module RMA |
+## Client
+| Suivi par lien/numéro+e-mail, historique public | ✅ |
+| Comptes clients avec mot de passe | ❌ remplacé par suivi sans compte (choix de simplification) |
+| E-mails transactionnels | ✅ via Resend (👤 RESEND_API_KEY + MAIL_FROM) ; sinon mis en file visible en admin |
+| Facture numérotée continue, TVA paramétrable | ✅ |
+| Retours/RMA (demande client, traitement admin, remboursement) | ✅ |
+| Validation d'adresse (téléphone/pays/code postal) | 🟡 règles de base, pas de géocodage |
 
-## 6. Risque et VPN
-| Point | État | Détail |
-|---|---|---|
-| Score explicable, niveaux 0–4, VPN seul = journal | ✅ | Testé |
-| Intégration d'un fournisseur de détection VPN/IP | ❌ | |
-
-## 7. IA
-| Point | État | Détail |
-|---|---|---|
-| Passerelle OpenRouter/Groq/DeepSeek, repli, anonymisation | ✅ | Hors chemin de paiement |
-| Clés ASV_KEY_* | 👤 | À ajouter dans Vercel |
-| Assistant client, copilote admin, recherche IA, Manus | ❌ | |
-
-## 8. Juridique et conformité
-| Point | État | Détail |
-|---|---|---|
-| Pages livraison, retours, confidentialité | 🟡 | Textes provisoires signalés comme tels |
-| CGV, mentions légales | ❌ | |
-| Obligations fiscales TRA et loi tanzanienne PDPA 2022 | 👤 | Conseil local à consulter (voir ERRATA §C) |
-| Rétention et suppression des données | ❌ | |
-
-## Verdict
-Le socle (sécurité, argent, paiement verrouillé, taux, risque, IA, schéma, catégories) est solide et testé. La boutique n'est pas prête à vendre : il manque le back-office, le panier/comptes, les e-mails, la facturation, le module retours et les textes légaux définitifs.
-
-## Ordre de priorité proposé
-1. Back-office admin protégé (produits, fournisseurs, offres, saisie prix source → USD).
-2. Panier + suivi de commande + e-mails transactionnels.
-3. Matrice pays/DDP/DAP et affichage local des prix.
-4. Retours/RMA et remboursements.
-5. Facturation/TVA et textes légaux validés.
-6. Assistant IA et copilote.
+## Risque, IA, conformité
+| Score de risque, politique VPN | ✅ ; détection VPN réelle via IPQS optionnelle (👤 IPQS_API_KEY) |
+| Passerelle IA, assistant client, brouillon de description admin | ✅ (👤 clés et modèles) |
+| Connecteur Manus | ❌ contrat d'API non fourni, rien d'inventé |
+| Copilote admin avancé / workflows | ❌ |
+| CGV, mentions, confidentialité, retours, livraison rédigés | ✅ versions de travail, 👤 relecture juridique + identité légale à saisir |
+| Conservation limitée (anonymisation hebdomadaire) | ✅ |
+| Limitation de débit | 🟡 en mémoire par instance ; compléter par le pare-feu Vercel |
+| Accès admin | ✅ mot de passe unique + session signée (👤 ADMIN_PASSWORD, ADMIN_SESSION_SECRET) |

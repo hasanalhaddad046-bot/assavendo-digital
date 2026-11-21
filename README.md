@@ -21,5 +21,8 @@ Port du cahier des charges V6 (voir `ERRATA_CAHIER_V6.md` pour les corrections a
 ## Verrou Paystack
 Tant que `settings.paystack_dropshipping_status` n'est pas `approved` avec `paystack_approval_proof` renseigné, `/api/checkout` refuse tout encaissement. Aucun contournement n'est prévu.
 
-## Non couvert à ce stade
-Back-office (fournisseurs, offres, fiche d'achat, réexpédition), panier multi-articles, comptes clients, e-mails, facturation/TVA, connecteur Manus, pages légales définitives.
+## Modules ajoutés
+Back-office `/admin` (mot de passe + session signée), panier multi-articles, devis de livraison par pays (DDP/DAP), suivi de commande, factures numérotées, retours et remboursements Paystack, e-mails (Resend), assistant IA, conservation limitée. Voir `AUDIT_CONFORMITE.md` pour l'état exact et les limites.
+
+## Variables à définir dans Vercel
+Voir `.env.example` (service_role, Paystack, CRON_SECRET, ADMIN_PASSWORD, ADMIN_SESSION_SECRET, Resend, IA).
