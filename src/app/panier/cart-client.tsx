@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Turnstile } from "@/components/turnstile";
 import { useCart, cartLineKey } from "@/components/cart";
+import { supabaseBrowser } from "@/lib/supabase-browser";
 
 const CURRENCIES = ["USD","TZS","KES","UGX","RWF","EUR","GBP","CNY","JPY","NGN","ZAR","GHS","CAD","AUD","AED","SAR","INR","CHF"];
 const COUNTRIES = [
@@ -132,9 +133,14 @@ export default function Cart() {
     setMsg("");
     const form = new FormData(event.currentTarget);
     try {
+      const { data: sessionData } = await supabaseBrowser().auth.getSession();
+      const accessToken = sessionData.session?.access_token;
       const response = await fetch("/api/checkout", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+        },
         body: JSON.stringify({
           items: lines.map((line) => ({
             productId: line.id,

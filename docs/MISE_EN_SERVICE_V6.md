@@ -62,3 +62,10 @@ Ne pas lancer de déploiement ni ouvrir les paiements réels avant :
 3. données fournisseurs/agences et contenus juridiques vérifiés ;
 4. tests d'intégration et recette métier réussis ;
 5. décision explicite de mise en production.
+
+## Comptes clients
+
+- Activer le fournisseur e-mail Supabase Auth et vérifier les modèles de confirmation/lien magique.
+- Ajouter l'URL `https://<domaine-public>/compte` et les URL de prévisualisation explicitement autorisées dans la liste Redirect URLs Supabase Auth.
+- Tester création de compte, connexion par lien, expiration, déconnexion, rafraîchissement de session, modification du profil, adresses et historique.
+- Les commandes invitées existantes ne sont pas automatiquement rattachées à un compte ; seules les nouvelles commandes dont la session a été vérifiée sont liées à `orders.user_id`.

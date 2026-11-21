@@ -6,6 +6,7 @@ import { validateAddress, normalizePhone } from "@/lib/address";
 import { checkAnonymizer } from "@/lib/ipcheck";
 import { rateLimit, clientIp } from "@/lib/ratelimit";
 import { toMinor } from "@/lib/money";
+import { getCustomerFromRequest } from "@/lib/customer-auth";
 
 export const runtime = "nodejs";
 
@@ -34,6 +35,15 @@ export async function POST(req: Request) {
     return Response.json({ error: "Le contrôle de sécurité est temporairement indisponible. Réessayez plus tard." }, { status: 503 });
   }
   const body = (await req.json().catch(() => null)) as Body | null;
+  let customer = null;
+  try {
+    customer = await getCustomerFromRequest(req);
+  } catch {
+    return Response.json({ error: "Impossible de vérifier votre session client. Réessayez." }, { status: 503 });
+  }
+  if (customer && customer.email.toLowerCase() !== String(body?.email ?? "").trim().toLowerCase()) {
+    return Response.json({ error: "L'adresse e-mail de commande doit correspondre au compte connecté." }, { status: 403 });
+  }
   if (!body?.email || !EMAIL.test(body.email) || !/^[A-Za-z]{2}$/.test(body.shipCountry ?? "")) {
     return Response.json({ error: "Données invalides." }, { status: 400 });
   }
@@ -277,6 +287,7 @@ export async function POST(req: Request) {
     .from("orders")
     .insert({
       email: body.email,
+      user_id: customer?.id ?? null,
       ship_country: ship,
       ship_address: {
         name: a.name, phone: normalizePhone(a.phone), country: ship,

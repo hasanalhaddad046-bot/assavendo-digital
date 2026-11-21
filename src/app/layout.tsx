@@ -17,7 +17,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <div className="wrap">
             <Link href="/" className="brand">ASSAVENDO <span>DIGITAL</span></Link>
             <nav className="muted">
-              <Link href="/produits">Catalogue</Link> · <Link href="/assistant">Assistant</Link> · <Link href="/suivi">Suivi</Link> · <CartLink />
+              <Link href="/produits">Catalogue</Link> · <Link href="/assistant">Assistant</Link> · <Link href="/suivi">Suivi</Link> · <Link href="/compte">Mon compte</Link> · <CartLink />
             </nav>
           </div>
         </header>
