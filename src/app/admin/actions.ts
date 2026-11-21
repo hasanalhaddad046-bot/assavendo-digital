@@ -14,6 +14,9 @@ import { queueEmail, siteUrl } from "@/lib/mail";
 import { chat } from "@/lib/ai-gateway";
 import { createManusTask, listManusMessages, sendManusMessage } from "@/lib/manus";
 import { redact } from "@/lib/ai-gateway";
+import type { AdminRole } from "@/lib/admin-auth";
+import { validateWorkflowDefinition, simulateWorkflow } from "@/lib/workflow-engine";
+import { dispatchWorkflowEvent, processWorkflowRun } from "@/lib/workflow-service";
 
 const str = (f: FormData, k: string) => String(f.get(k) ?? "").trim();
 const num = (f: FormData, k: string) => {
@@ -46,7 +49,7 @@ export async function logout() {
 
 // ---------- Catalogue ----------
 export async function createProduct(f: FormData) {
-  await requireAdmin();
+  await requireAdmin("catalog:write");
   const name = str(f, "name");
   const kind = str(f, "kind");
   if (!name || !["physical", "digital", "service"].includes(kind)) back("/admin/produits", "Nom ou type invalide.", true);
@@ -63,7 +66,7 @@ export async function createProduct(f: FormData) {
 }
 
 export async function updateProduct(f: FormData) {
-  await requireAdmin();
+  await requireAdmin("catalog:write");
   const id = str(f, "id");
   const path = `/admin/produits/${id}`;
   const status = str(f, "status");
@@ -101,7 +104,7 @@ export async function updateProduct(f: FormData) {
 }
 
 export async function addOffer(f: FormData) {
-  await requireAdmin();
+  await requireAdmin("catalog:write");
   const pid = str(f, "product_id");
   const path = `/admin/produits/${pid}`;
   const currency = str(f, "currency").toUpperCase();
@@ -156,7 +159,7 @@ export async function addOffer(f: FormData) {
 
 
 export async function createVariant(f: FormData) {
-  await requireAdmin();
+  await requireAdmin("catalog:write");
   const productId = str(f, "product_id");
   const path = `/admin/produits/${productId}`;
   const name = str(f, "name");
@@ -184,7 +187,7 @@ export async function createVariant(f: FormData) {
 }
 
 export async function toggleVariant(f: FormData) {
-  await requireAdmin();
+  await requireAdmin("catalog:write");
   const productId = str(f, "product_id");
   const active = str(f, "active") === "true";
   const { error } = await supabaseAdmin().from("product_variants")
@@ -195,7 +198,7 @@ export async function toggleVariant(f: FormData) {
 }
 
 export async function addOfferTier(f: FormData) {
-  await requireAdmin();
+  await requireAdmin("catalog:write");
   const productId = str(f, "product_id");
   const offerId = str(f, "offer_id");
   const path = `/admin/produits/${productId}`;
@@ -229,7 +232,7 @@ export async function addOfferTier(f: FormData) {
 }
 
 export async function deleteOfferTier(f: FormData) {
-  await requireAdmin();
+  await requireAdmin("catalog:write");
   const productId = str(f, "product_id");
   const { error } = await supabaseAdmin().from("offer_price_tiers")
     .delete().eq("id", str(f, "id")).eq("offer_id", str(f, "offer_id"));
@@ -238,7 +241,7 @@ export async function deleteOfferTier(f: FormData) {
 }
 
 export async function addOfferCostComponent(f: FormData) {
-  await requireAdmin();
+  await requireAdmin("catalog:write");
   const productId = str(f, "product_id");
   const offerId = str(f, "offer_id");
   const path = `/admin/produits/${productId}`;
@@ -267,7 +270,7 @@ export async function addOfferCostComponent(f: FormData) {
 }
 
 export async function deleteOfferCostComponent(f: FormData) {
-  await requireAdmin();
+  await requireAdmin("catalog:write");
   const productId = str(f, "product_id");
   const { error } = await supabaseAdmin().from("offer_cost_components")
     .delete().eq("id", str(f, "id")).eq("offer_id", str(f, "offer_id"));
@@ -276,7 +279,7 @@ export async function deleteOfferCostComponent(f: FormData) {
 }
 
 export async function setOfferStatus(f: FormData) {
-  await requireAdmin();
+  await requireAdmin("catalog:write");
   const pid = str(f, "product_id");
   const path = `/admin/produits/${pid}`;
   const status = str(f, "status");
@@ -298,7 +301,7 @@ export async function setOfferStatus(f: FormData) {
 }
 
 export async function deleteOffer(f: FormData) {
-  await requireAdmin();
+  await requireAdmin("catalog:write");
   await supabaseAdmin().from("offers").delete().eq("id", str(f, "id"));
   back(`/admin/produits/${str(f, "product_id")}`, "Offre supprimée.");
 }
@@ -309,7 +312,7 @@ export async function deleteOffer(f: FormData) {
  * La qualité, la disponibilité et la fraîcheur filtrent les offres avant comparaison.
  */
 export async function computePrice(f: FormData) {
-  await requireAdmin();
+  await requireAdmin("catalog:write");
   const id = str(f, "product_id");
   const variantId = str(f, "variant_id") || null;
   const path = `/admin/produits/${id}`;
@@ -470,7 +473,7 @@ export async function computePrice(f: FormData) {
 }
 
 export async function upsertDeliveryRule(f: FormData) {
-  await requireAdmin();
+  await requireAdmin("logistics:write");
   const pid = str(f, "product_id");
   const path = `/admin/produits/${pid}`;
   const country = str(f, "country").toUpperCase();
@@ -486,13 +489,13 @@ export async function upsertDeliveryRule(f: FormData) {
 }
 
 export async function deleteDeliveryRule(f: FormData) {
-  await requireAdmin();
+  await requireAdmin("logistics:write");
   await supabaseAdmin().from("delivery_rules").delete().eq("id", str(f, "id"));
   back(`/admin/produits/${str(f, "product_id")}`, "Règle supprimée.");
 }
 
 export async function aiDescription(f: FormData) {
-  await requireAdmin();
+  await requireAdmin("catalog:write");
   const id = str(f, "product_id");
   const path = `/admin/produits/${id}`;
   const { data: p } = await supabaseAdmin().from("products").select("name,kind,description").eq("id", id).single();
@@ -508,7 +511,7 @@ export async function aiDescription(f: FormData) {
 
 // ---------- Fournisseurs et agences ----------
 export async function createSupplier(f: FormData) {
-  await requireAdmin();
+  await requireAdmin("suppliers:write");
   const { error } = await supabaseAdmin().from("suppliers").insert({
     code: str(f, "code").toUpperCase(), name: str(f, "name"), platform: str(f, "platform"), url: str(f, "url") || null,
     country: (str(f, "country") || "CN").toUpperCase(), billing_currency: (str(f, "currency") || "CNY").toUpperCase(),
@@ -517,7 +520,7 @@ export async function createSupplier(f: FormData) {
   back("/admin/fournisseurs", "Fournisseur ajouté (en revue).");
 }
 export async function setSupplierTrust(f: FormData) {
-  await requireAdmin();
+  await requireAdmin("suppliers:write");
   const t = str(f, "trust_level");
   if (!["in_review", "approved", "watch", "blocked"].includes(t)) back("/admin/fournisseurs", "Niveau de confiance invalide.", true);
   const db = supabaseAdmin();
@@ -530,7 +533,7 @@ export async function setSupplierTrust(f: FormData) {
   back("/admin/fournisseurs", "Niveau de confiance mis à jour.");
 }
 export async function createAgency(f: FormData) {
-  await requireAdmin();
+  await requireAdmin("logistics:write");
   const { error } = await supabaseAdmin().from("agencies").insert({
     name: str(f, "name"), city: str(f, "city"), country: (str(f, "country") || "CN").toUpperCase(),
     address_local: str(f, "address_local"), address_latin: str(f, "address_latin"), contact: str(f, "contact"), notes: str(f, "notes"),
@@ -539,14 +542,14 @@ export async function createAgency(f: FormData) {
   back("/admin/agences", "Agence ajoutée.");
 }
 export async function toggleAgency(f: FormData) {
-  await requireAdmin();
+  await requireAdmin("logistics:write");
   await supabaseAdmin().from("agencies").update({ active: str(f, "active") === "true" }).eq("id", str(f, "id"));
   back("/admin/agences", "Agence mise à jour.");
 }
 
 // ---------- Commandes ----------
 export async function updateOrderItem(f: FormData) {
-  await requireAdmin();
+  await requireAdmin("logistics:write");
   const orderId = str(f, "order_id");
   const path = `/admin/commandes/${orderId}`;
   const status = str(f, "purchase_status");
@@ -569,7 +572,7 @@ export async function updateOrderItem(f: FormData) {
 }
 
 export async function setOrderStatus(f: FormData) {
-  await requireAdmin();
+  await requireAdmin("orders:write");
   const id = str(f, "id");
   const path = `/admin/commandes/${id}`;
   const status = str(f, "status");
@@ -603,7 +606,7 @@ export async function setOrderStatus(f: FormData) {
 }
 
 export async function addOrderNote(f: FormData) {
-  await requireAdmin();
+  await requireAdmin("orders:write");
   const id = str(f, "id");
   await supabaseAdmin().from("order_events").insert({ order_id: id, kind: "note", message: str(f, "message"), is_public: str(f, "public") === "on" });
   back(`/admin/commandes/${id}`, "Note ajoutée.");
@@ -611,7 +614,7 @@ export async function addOrderNote(f: FormData) {
 
 // ---------- Retours et remboursements ----------
 export async function updateRma(f: FormData) {
-  await requireAdmin();
+  await requireAdmin("returns:write");
   const id = str(f, "id");
   const status = str(f, "status");
   if (!["approved", "rejected", "received", "closed"].includes(status)) back("/admin/retours", "Statut invalide.", true);
@@ -625,7 +628,7 @@ export async function updateRma(f: FormData) {
 }
 
 export async function refundRma(f: FormData) {
-  await requireAdmin();
+  await requireAdmin("refunds:request");
   const id = str(f, "id");
   const amount = num(f, "amount_usd");
   if (!(amount > 0)) back("/admin/retours", "Montant invalide.", true);
@@ -680,7 +683,7 @@ const EDITABLE = [
   "vat_registered", "vat_pct", "legal_name", "legal_address", "support_email", "tax_id", "retention_days",
 ];
 export async function saveSettings(f: FormData) {
-  await requireAdmin();
+  await requireAdmin("settings:write");
   const next: Record<string, string> = {};
   for (const k of EDITABLE) if (f.has(k)) next[k] = str(f, k);
   if (next.paystack_dropshipping_status === "approved" && !next.paystack_approval_proof) {
@@ -698,7 +701,7 @@ export async function saveSettings(f: FormData) {
 }
 
 export async function resendPendingEmails() {
-  await requireAdmin();
+  await requireAdmin("support:write");
   const db = supabaseAdmin();
   const { data } = await db.from("email_outbox").select("*").in("status", ["pending", "failed"]).limit(50);
   const key = process.env.RESEND_API_KEY, from = process.env.MAIL_FROM;
@@ -715,7 +718,7 @@ export async function resendPendingEmails() {
 }
 
 export async function launchManusTask(f: FormData) {
-  await requireAdmin();
+  await requireAdmin("ai:write");
   const title = str(f, "title").slice(0, 160);
   const prompt = str(f, "prompt");
   if (!title || !prompt || prompt.length > 24_000) back("/admin/ia", "Titre ou consigne invalide.", true);
@@ -776,7 +779,7 @@ export async function launchManusTask(f: FormData) {
 }
 
 export async function refreshManusTask(f: FormData) {
-  await requireAdmin();
+  await requireAdmin("ai:write");
   const id = str(f, "id");
   const taskId = str(f, "task_id");
   const { data: run } = await supabaseAdmin().from("ai_tool_runs")
@@ -798,7 +801,7 @@ export async function refreshManusTask(f: FormData) {
 }
 
 export async function sendManusTaskMessage(f: FormData) {
-  await requireAdmin();
+  await requireAdmin("ai:write");
   const id = str(f, "id");
   const taskId = str(f, "task_id");
   const message = redact(str(f, "message"));
@@ -881,7 +884,7 @@ async function syncOrderStatusFromShipments(orderId: string): Promise<void> {
 }
 
 export async function requestPurchaseApproval(f: FormData) {
-  await requireAdmin();
+  await requireAdmin("purchases:write");
   const purchaseId = str(f, "purchase_order_id");
   const { data: purchase } = await supabaseAdmin().from("purchase_orders")
     .select("id,order_id,status,internal_notes,orders(status)").eq("id", purchaseId).maybeSingle();
@@ -905,7 +908,7 @@ export async function requestPurchaseApproval(f: FormData) {
 }
 
 export async function approvePurchaseOrder(f: FormData) {
-  await requireAdmin();
+  await requireAdmin("purchases:write");
   const purchaseId = str(f, "purchase_order_id");
   const db = supabaseAdmin();
   const { data: purchase } = await db.from("purchase_orders")
@@ -975,7 +978,7 @@ export async function approvePurchaseOrder(f: FormData) {
 }
 
 export async function markPurchaseOrderOrdered(f: FormData) {
-  await requireAdmin();
+  await requireAdmin("purchases:write");
   const purchaseId = str(f, "purchase_order_id");
   const supplierReference = str(f, "supplier_order_reference").slice(0, 160);
   if (!supplierReference) back("/admin/commandes", "La référence de commande du fournisseur est obligatoire.", true);
@@ -1005,7 +1008,7 @@ export async function markPurchaseOrderOrdered(f: FormData) {
 }
 
 export async function recordPurchaseReceipt(f: FormData) {
-  await requireAdmin();
+  await requireAdmin("logistics:write");
   const purchaseId = str(f, "purchase_order_id");
   const itemId = str(f, "purchase_item_id");
   const receivedQty = Math.floor(num(f, "received_qty"));
@@ -1084,7 +1087,7 @@ export async function recordPurchaseReceipt(f: FormData) {
 }
 
 export async function createAgencyReshipment(f: FormData) {
-  await requireAdmin();
+  await requireAdmin("logistics:write");
   const purchaseId = str(f, "purchase_order_id");
   const pieces = Math.max(1, Math.min(100, Math.floor(num(f, "pieces") || 1)));
   const weightGrams = str(f, "weight_grams") ? num(f, "weight_grams") : null;
@@ -1160,7 +1163,7 @@ export async function createAgencyReshipment(f: FormData) {
 }
 
 export async function updateShipmentPackage(f: FormData) {
-  await requireAdmin();
+  await requireAdmin("logistics:write");
   const packageId = str(f, "package_id");
   const carrier = str(f, "carrier").slice(0, 120);
   const tracking = str(f, "tracking_number").slice(0, 160);
@@ -1257,6 +1260,12 @@ export async function updateShipmentPackage(f: FormData) {
   }
 
   await syncOrderStatusFromShipments(parcel.order_id);
+  try {
+    await dispatchWorkflowEvent(db,"shipment_status_changed",{
+      order_id:parcel.order_id,shipment_status:status,event_type:"shipment_status_changed",
+      shipment_stage:parcel.stage,package_reference:parcel.package_reference,
+    },`shipment:${packageId}:${status}`);
+  } catch(error) { console.error("Workflow dispatch failed after shipment update",error); }
   await audit("shipment_package_updated", packageId, {
     order_id: parcel.order_id, status, carrier, tracking_number: tracking,
   }, "admin");
@@ -1279,7 +1288,7 @@ const DIGITAL_MIME_EXTENSIONS: Record<string, string> = {
 export async function createDigitalAssetUpload(f: FormData): Promise<
   { ok: true; path: string; token: string } | { ok: false; error: string }
 > {
-  await requireAdmin();
+  await requireAdmin("digital:write");
   const productId = str(f, "product_id");
   const fileName = str(f, "file_name").replace(/[\\/\u0000-\u001f]/g, "").slice(0, 180);
   const mimeType = str(f, "mime_type").toLowerCase();
@@ -1303,7 +1312,7 @@ export async function createDigitalAssetUpload(f: FormData): Promise<
 }
 
 export async function registerDigitalAsset(f: FormData): Promise<{ ok: boolean; error?: string }> {
-  await requireAdmin();
+  await requireAdmin("digital:write");
   const productId = str(f, "product_id");
   const path = str(f, "storage_path");
   const fileName = str(f, "file_name").replace(/[\\/\u0000-\u001f]/g, "").slice(0, 180);
@@ -1353,7 +1362,7 @@ export async function registerDigitalAsset(f: FormData): Promise<{ ok: boolean; 
 }
 
 export async function reviewDigitalAsset(f: FormData) {
-  await requireAdmin();
+  await requireAdmin("digital:write");
   const id = str(f, "asset_id");
   const scanStatus = str(f, "scan_status");
   const rights = str(f, "distribution_rights");
@@ -1390,7 +1399,7 @@ export async function reviewDigitalAsset(f: FormData) {
 }
 
 export async function updateServiceTask(f: FormData) {
-  await requireAdmin();
+  await requireAdmin("services:write");
   const id = str(f, "task_id");
   const status = str(f, "status");
   const allowed = ["awaiting_brief", "ready", "assigned", "in_progress", "review", "revision_requested", "accepted", "completed", "cancelled", "disputed"];
@@ -1440,7 +1449,7 @@ export async function updateServiceTask(f: FormData) {
 }
 
 export async function createServiceMilestone(f: FormData) {
-  await requireAdmin();
+  await requireAdmin("services:write");
   const taskId = str(f, "task_id");
   const title = str(f, "title").slice(0, 180);
   const description = str(f, "description").slice(0, 2000);
@@ -1466,7 +1475,7 @@ export async function createServiceMilestone(f: FormData) {
 }
 
 export async function assignPurchaseAgency(f: FormData) {
-  await requireAdmin();
+  await requireAdmin("purchases:write");
   const purchaseId = str(f, "purchase_order_id");
   const agencyId = str(f, "agency_id");
   const db = supabaseAdmin();
@@ -1532,7 +1541,7 @@ export async function assignPurchaseAgency(f: FormData) {
 
 
 export async function recordPaymentSettlement(f: FormData) {
-  await requireAdmin();
+  await requireAdmin("finance:write");
   const reference = str(f, "provider_settlement_id").slice(0, 160);
   const currency = str(f, "currency").toUpperCase();
   const statementReference = str(f, "statement_reference").slice(0, 200);
@@ -1660,7 +1669,7 @@ export async function recordPaymentSettlement(f: FormData) {
 }
 
 export async function recordFinanceAdjustment(f: FormData) {
-  await requireAdmin();
+  await requireAdmin("finance:write");
   const kind = str(f, "kind");
   const allowed = ["supplier_cost", "agency_cost", "payment_fee", "fx_fee", "refund", "chargeback", "reserve", "other"];
   const currency = str(f, "currency").toUpperCase();
@@ -1714,4 +1723,228 @@ export async function recordFinanceAdjustment(f: FormData) {
   }, "admin");
   revalidatePath("/admin/finances");
   back("/admin/finances", "Ajustement financier enregistré avec son montant source et son snapshot FX.");
+}
+
+
+const ADMIN_ROLES: AdminRole[] = [
+  "owner","administrator","catalog_manager","purchasing_manager",
+  "logistics_manager","support_agent","accountant","auditor",
+];
+
+export async function inviteAdminMember(f: FormData) {
+  const actor = await requireAdmin("team:manage");
+  const email = str(f,"email").toLowerCase();
+  const displayName = str(f,"display_name").slice(0,160);
+  const role = str(f,"role") as AdminRole;
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || !ADMIN_ROLES.includes(role)) {
+    back("/admin/equipe","Adresse e-mail ou rôle invalide.",true);
+  }
+  if (role === "owner") {
+    const {count,error}=await supabaseAdmin().from("admin_members")
+      .select("user_id",{count:"exact",head:true}).eq("role","owner").eq("active",true);
+    if (error || (count ?? 0) > 0) {
+      back("/admin/equipe","Un propriétaire actif existe déjà. Pour transférer la propriété, procédez à une procédure contrôlée distincte.",true);
+    }
+  }
+  const db=supabaseAdmin();
+  const {data,error}=await db.auth.admin.inviteUserByEmail(email,{
+    redirectTo: siteUrl()+"/admin/auth/callback",
+    data: { full_name: displayName },
+  });
+  if (error || !data.user) {
+    back("/admin/equipe","Invitation Supabase Auth impossible. Vérifiez la clé serveur, le service e-mail Auth et les Redirect URLs.",true);
+  }
+  const {error:memberError}=await db.from("admin_members").upsert({
+    user_id:data.user.id,email,display_name:displayName,role,active:true,
+    invited_by:actor.source==="supabase_auth"?actor.id:null,updated_at:new Date().toISOString(),
+  },{onConflict:"user_id"});
+  if (memberError) {
+    // Revoke access if membership provisioning failed.
+    await db.auth.admin.updateUserById(data.user.id,{ban_duration:"876000h"});
+    back("/admin/equipe","Invitation envoyée, mais l'attribution du rôle a échoué. Le compte est suspendu jusqu'à régularisation.",true);
+  }
+  await audit("admin_member_invited",email,{role,display_name:displayName},actor.email??"legacy-owner");
+  revalidatePath("/admin/equipe");
+  back("/admin/equipe","Invitation nominative créée. L'accès ne sera possible qu'après acceptation et vérification du rôle.");
+}
+
+export async function updateAdminMember(f: FormData) {
+  const actor = await requireAdmin("team:manage");
+  const userId=str(f,"user_id");
+  const role=str(f,"role") as AdminRole;
+  const displayName=str(f,"display_name").slice(0,160);
+  const active=str(f,"active")==="on";
+  if (!/^[0-9a-f-]{36}$/i.test(userId) || !ADMIN_ROLES.includes(role)) {
+    back("/admin/equipe","Membre ou rôle invalide.",true);
+  }
+  if (actor.id===userId && (!active || role!=="owner")) {
+    back("/admin/equipe","Vous ne pouvez pas désactiver ou rétrograder votre propre compte propriétaire pendant cette session.",true);
+  }
+  const db=supabaseAdmin();
+  const {data:existing}=await db.from("admin_members")
+    .select("user_id,email,role,active").eq("user_id",userId).maybeSingle();
+  if (!existing) back("/admin/equipe","Membre introuvable.",true);
+  if (existing.role==="owner" && (role!=="owner" || !active)) {
+    const {count}=await db.from("admin_members").select("user_id",{count:"exact",head:true})
+      .eq("role","owner").eq("active",true);
+    if ((count??0)<=1) back("/admin/equipe","Le dernier propriétaire actif ne peut pas être rétrogradé ou désactivé.",true);
+  }
+  if (role==="owner" && existing.role!=="owner") {
+    const {count}=await db.from("admin_members").select("user_id",{count:"exact",head:true})
+      .eq("role","owner").eq("active",true);
+    if ((count??0)>0) back("/admin/equipe","Un propriétaire actif existe déjà.",true);
+  }
+  const {error}=await db.from("admin_members").update({
+    role,display_name:displayName,active,updated_at:new Date().toISOString(),
+  }).eq("user_id",userId);
+  if (error) back("/admin/equipe","Mise à jour des permissions impossible.",true);
+  if (!active) {
+    await db.auth.admin.updateUserById(userId,{ban_duration:"876000h"});
+  } else {
+    await db.auth.admin.updateUserById(userId,{ban_duration:"none"});
+  }
+  await audit("admin_member_updated",existing.email,{role,active},actor.email??"legacy-owner");
+  revalidatePath("/admin/equipe");
+  back("/admin/equipe","Rôle et accès mis à jour.");
+}
+export async function saveWorkflowDefinition(f:FormData) {
+  const actor=await requireAdmin("workflows:write");
+  const id=str(f,"workflow_id");
+  let conditions:unknown,actions:unknown,triggerConfig:unknown={};
+  try {
+    conditions=JSON.parse(str(f,"conditions_json")||"[]");
+    actions=JSON.parse(str(f,"actions_json")||"[]");
+    triggerConfig=JSON.parse(str(f,"trigger_config_json")||"{}");
+  } catch {
+    back("/admin/workflows","JSON invalide dans les conditions, actions ou paramètres du déclencheur.",true);
+  }
+  const input={
+    name:str(f,"name"),
+    description:str(f,"description"),
+    trigger_type:str(f,"trigger_type"),
+    conditions,
+    actions,
+    autonomy_mode:str(f,"autonomy_mode"),
+    enabled:str(f,"enabled")==="on",
+  };
+  const validated=validateWorkflowDefinition(input);
+  if(!validated.ok) back("/admin/workflows",validated.error,true);
+  if(!triggerConfig||typeof triggerConfig!=="object"||Array.isArray(triggerConfig)) {
+    back("/admin/workflows","Les paramètres de déclencheur doivent être un objet JSON.",true);
+  }
+  const row={
+    ...validated.value,
+    trigger_config:triggerConfig as Record<string,unknown>,
+    created_by:actor.email??actor.id,
+    updated_at:new Date().toISOString(),
+  };
+  const db=supabaseAdmin();
+  const result=id
+    ? await db.from("workflow_definitions").update(row).eq("id",id).select("id").maybeSingle()
+    : await db.from("workflow_definitions").insert(row).select("id").single();
+  if(result.error||!result.data) back("/admin/workflows","Enregistrement du workflow impossible.",true);
+  await audit(id?"workflow_definition_updated":"workflow_definition_created",String(result.data.id),{
+    trigger_type:validated.value.trigger_type,autonomy_mode:validated.value.autonomy_mode,
+    enabled:validated.value.enabled,actions:validated.value.actions.map(a=>a.type),
+  },actor.email??actor.id);
+  revalidatePath("/admin/workflows");
+  back("/admin/workflows","Définition de workflow enregistrée. Les actions externes restent exclues de la liste blanche.");
+}
+
+export async function simulateWorkflowDefinition(f:FormData) {
+  const actor=await requireAdmin("workflows:write");
+  const workflowId=str(f,"workflow_id");
+  let payload:Record<string,unknown>;
+  try {
+    const parsed=JSON.parse(str(f,"sample_payload_json")||"{}") as unknown;
+    if(!parsed||typeof parsed!=="object"||Array.isArray(parsed)) throw new Error();
+    payload=parsed as Record<string,unknown>;
+  } catch {
+    back("/admin/workflows","Le payload de test doit être un objet JSON.",true);
+  }
+  const db=supabaseAdmin();
+  const {data:raw}=await db.from("workflow_definitions").select("*").eq("id",workflowId).maybeSingle();
+  if(!raw) back("/admin/workflows","Workflow introuvable.",true);
+  const definition={
+    conditions:raw.conditions??[],
+    actions:raw.actions??[],
+    autonomy_mode:raw.autonomy_mode,
+  };
+  const simulation=simulateWorkflow(definition,payload);
+  const safePayload=JSON.parse(redact(JSON.stringify(payload))) as Record<string,unknown>;
+  const now=new Date().toISOString();
+  const {data:run,error}=await db.from("workflow_runs").insert({
+    workflow_id:workflowId,
+    trigger_event:"simulation:"+raw.trigger_type,
+    trigger_payload_redacted:safePayload,
+    status:simulation.matched?"succeeded":"cancelled",
+    started_at:now,completed_at:now,updated_at:now,
+    error:simulation.matched?"SIMULATION ONLY — aucune action n'a été exécutée.":simulation.reason,
+  }).select("id").single();
+  if(error||!run) back("/admin/workflows","Création du journal de simulation impossible.",true);
+  if(simulation.steps.length) {
+    const {error:stepError}=await db.from("workflow_run_steps").insert(
+      simulation.steps.map(step=>({
+        run_id:run.id,step_index:step.index,action_type:step.type,
+        status:"skipped",
+        input_redacted:{type:step.type},
+        output_redacted:{
+          preview:step.preview,
+          requires_approval:step.requiresApproval,
+          simulated_only:true,
+          matched:simulation.matched,
+        },
+        requires_approval:step.requiresApproval,
+        completed_at:now,
+      })),
+    );
+    if(stepError) back("/admin/workflows","Journal créé, mais les étapes de simulation n'ont pas été enregistrées.",true);
+  }
+  await audit("workflow_simulated",workflowId,{
+    run_id:run.id,matched:simulation.matched,steps:simulation.steps.length,
+  },actor.email??actor.id);
+  revalidatePath("/admin/workflows");
+  back("/admin/workflows",simulation.matched
+    ?"Simulation réussie. Aucune note, aucun e-mail et aucune action externe n'ont été exécutés."
+    :"Simulation terminée : les conditions ne correspondent pas au payload.");
+}
+
+export async function approveWorkflowRun(f:FormData) {
+  const actor=await requireAdmin("workflows:write");
+  const id=str(f,"run_id");
+  const db=supabaseAdmin();
+  const now=new Date().toISOString();
+  const {data:run}=await db.from("workflow_runs").select("id,status,workflow_id")
+    .eq("id",id).maybeSingle();
+  if(!run||run.status!=="awaiting_approval") back("/admin/workflows","Cette exécution n'attend pas une approbation.",true);
+  const {error}=await db.from("workflow_runs").update({
+    status:"queued",approved_by:actor.email??actor.id,approved_at:now,
+    next_retry_at:null,updated_at:now,error:null,
+  }).eq("id",id).eq("status","awaiting_approval");
+  if(error) back("/admin/workflows","Approbation du workflow impossible.",true);
+  await db.from("workflow_run_steps").update({status:"pending"}).eq("run_id",id).eq("status","awaiting_approval");
+  const execution=await processWorkflowRun(db,id);
+  await audit("workflow_run_approved",id,{workflow_id:run.workflow_id,execution},actor.email??actor.id);
+  revalidatePath("/admin/workflows");
+  back("/admin/workflows",execution==="processed"
+    ?"Approbation enregistrée et étapes permises exécutées. Aucun e-mail n'a été envoyé."
+    :execution==="failed"
+      ?"Approbation enregistrée, mais l'exécution a échoué. Elle est journalisée pour reprise contrôlée."
+      :"Approbation enregistrée. L'exécution reste disponible dans la file de reprise.");
+}
+
+export async function cancelWorkflowRun(f:FormData) {
+  const actor=await requireAdmin("workflows:write");
+  const id=str(f,"run_id");
+  const db=supabaseAdmin();
+  const {error}=await db.from("workflow_runs").update({
+    status:"cancelled",completed_at:new Date().toISOString(),updated_at:new Date().toISOString(),
+    error:"Annulé par un administrateur.",
+  }).eq("id",id).in("status",["queued","awaiting_approval","failed"]);
+  if(error) back("/admin/workflows","Annulation du workflow impossible.",true);
+  await db.from("workflow_run_steps").update({status:"skipped",completed_at:new Date().toISOString()})
+    .eq("run_id",id).in("status",["pending","awaiting_approval","failed"]);
+  await audit("workflow_run_cancelled",id,{},actor.email??actor.id);
+  revalidatePath("/admin/workflows");
+  back("/admin/workflows","Exécution annulée.");
 }

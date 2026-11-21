@@ -1,6 +1,7 @@
 import { supabaseAdmin, audit } from "@/lib/supabase";
 import { queueEmail } from "@/lib/mail";
 import { rateLimit, clientIp } from "@/lib/ratelimit";
+import { dispatchWorkflowEvent } from "@/lib/workflow-service";
 
 export const runtime = "nodejs";
 
@@ -35,6 +36,11 @@ export async function POST(req: Request) {
     .single();
   if (error || !rma) return Response.json({ error: "Enregistrement impossible." }, { status: 500 });
   await db.from("order_events").insert({ order_id: order.id, kind: "rma", message: "Demande de retour/assistance reçue." });
+  try {
+    await dispatchWorkflowEvent(db,"return_requested",{
+      order_id:order.id,rma_status:"requested",event_type:"return_requested",
+    },`return-requested:${rma.id}`);
+  } catch(error) { console.error("Workflow dispatch failed after return request",error); }
   await audit("rma_created", rma.id, { order: number });
   await queueEmail({
     to: order.email, orderId: order.id,

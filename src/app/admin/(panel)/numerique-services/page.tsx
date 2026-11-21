@@ -1,3 +1,4 @@
+import { requireAdmin } from "@/lib/admin-auth";
 import { supabaseAdmin } from "@/lib/supabase";
 import {
   reviewDigitalAsset,
@@ -14,6 +15,7 @@ export default async function DigitalServices({
 }: {
   searchParams: Promise<{ ok?: string; err?: string }>;
 }) {
+  await requireAdmin("digital:read");
   const query = await searchParams;
   const db = supabaseAdmin();
   const [

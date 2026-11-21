@@ -1,3 +1,4 @@
+import { requireAdmin } from "@/lib/admin-auth";
 import Link from "next/link";
 import { supabaseAdmin } from "@/lib/supabase";
 import { createProduct } from "../../actions";
@@ -5,7 +6,9 @@ import { Flash } from "../flash";
 
 export const metadata = { title: "Produits", robots: { index: false } };
 
-export default async function Products({ searchParams }: { searchParams: Promise<{ ok?: string; err?: string }> }) {
+export default async function Products({
+  searchParams }: { searchParams: Promise<{ ok?: string; err?: string }> }) {
+  await requireAdmin("catalog:read");
   const sp = await searchParams;
   const db = supabaseAdmin();
   const { data: products } = await db.from("products").select("id,name,sku,kind,status,price_usd_minor").order("created_at", { ascending: false }).limit(200);

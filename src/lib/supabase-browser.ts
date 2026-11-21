@@ -1,11 +1,14 @@
 "use client";
-import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { createBrowserClient } from "@supabase/ssr";
+import type { SupabaseClient } from "@supabase/supabase-js";
 let client: SupabaseClient | null = null;
 export function supabaseBrowser(): SupabaseClient {
   if (client) return client;
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  if (!url || !key) throw new Error("Configuration Supabase publique absente.");
-  client = createClient(url, key, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true, flowType: "pkce" } });
+  const url=process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key=process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if(!url||!key) throw new Error("Configuration Supabase publique absente.");
+  client=createBrowserClient(url,key,{
+    auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:true,flowType:"pkce"},
+  });
   return client;
 }

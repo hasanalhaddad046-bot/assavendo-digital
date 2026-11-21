@@ -1,3 +1,4 @@
+import { requireAdmin } from "@/lib/admin-auth";
 import { getSettings } from "@/lib/supabase";
 import { saveSettings } from "../../actions";
 import { Flash } from "../flash";
@@ -25,7 +26,9 @@ const FIELDS: [string, string, string][] = [
   ["retention_days", "Conservation des données personnelles (jours, min. 365)", ""],
 ];
 
-export default async function Settings({ searchParams }: { searchParams: Promise<{ ok?: string; err?: string }> }) {
+export default async function Settings({
+  searchParams }: { searchParams: Promise<{ ok?: string; err?: string }> }) {
+  await requireAdmin("settings:read");
   const sp = await searchParams;
   const s = await getSettings();
   return (

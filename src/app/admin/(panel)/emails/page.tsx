@@ -1,10 +1,13 @@
+import { requireAdmin } from "@/lib/admin-auth";
 import { supabaseAdmin } from "@/lib/supabase";
 import { resendPendingEmails } from "../../actions";
 import { Flash } from "../flash";
 
 export const metadata = { title: "E-mails", robots: { index: false } };
 
-export default async function Emails({ searchParams }: { searchParams: Promise<{ ok?: string; err?: string }> }) {
+export default async function Emails({
+  searchParams }: { searchParams: Promise<{ ok?: string; err?: string }> }) {
+  await requireAdmin("support:read");
   const sp = await searchParams;
   const { data } = await supabaseAdmin().from("email_outbox").select("id,to_email,subject,status,error,created_at").order("created_at", { ascending: false }).limit(100);
   return (

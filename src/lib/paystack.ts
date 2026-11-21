@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import { supabaseAdmin, getSettings, audit } from "./supabase";
 import { queueEmail, siteUrl } from "./mail";
+import { dispatchWorkflowEvent } from "./workflow-service";
 
 const API = "https://api.paystack.co";
 
@@ -464,6 +465,17 @@ export async function processVerifiedPayment(reference: string): Promise<void> {
   }
   if (row.status === "paid_verified") {
     await ensurePaidSideEffects(row.order_id);
+    const { data: existingOrder } = await db.from("orders").select("status,total_usd_minor,ship_country,risk_score")
+      .eq("id",row.order_id).maybeSingle();
+    if (existingOrder && existingOrder.status !== "manual_review") {
+      try {
+        await dispatchWorkflowEvent(db,"payment_verified",{
+          order_id:row.order_id,payment_status:"paid_verified",order_status:existingOrder.status,
+          total_usd_minor:existingOrder.total_usd_minor,ship_country:existingOrder.ship_country,
+          risk_score:existingOrder.risk_score,event_type:"payment_verified",
+        },`payment-verified:${row.order_id}`);
+      } catch(error) { console.error("Workflow dispatch failed after verified payment",error); }
+    }
     return;
   }
 
@@ -545,6 +557,17 @@ export async function processVerifiedPayment(reference: string): Promise<void> {
   }
   await ensurePaidSideEffects(row.order_id);
   await audit("payment_verified", reference, { order_id: row.order_id, provider_id: transaction.id ?? null });
+  const { data: verifiedOrder } = await db.from("orders")
+    .select("status,total_usd_minor,ship_country,risk_score").eq("id",row.order_id).maybeSingle();
+  if (verifiedOrder && verifiedOrder.status !== "manual_review") {
+    try {
+      await dispatchWorkflowEvent(db,"payment_verified",{
+        order_id:row.order_id,payment_status:"paid_verified",order_status:verifiedOrder.status,
+        total_usd_minor:verifiedOrder.total_usd_minor,ship_country:verifiedOrder.ship_country,
+        risk_score:verifiedOrder.risk_score,event_type:"payment_verified",
+      },`payment-verified:${row.order_id}`);
+    } catch(error) { console.error("Workflow dispatch failed after verified payment",error); }
+  }
 }
 
 async function processPaymentFailure(data: Record<string, unknown>): Promise<void> {

@@ -1,3 +1,4 @@
+import { requireAdmin } from "@/lib/admin-auth";
 import { notFound } from "next/navigation";
 import { supabaseAdmin } from "@/lib/supabase";
 import { toMajor, decimals } from "@/lib/money";
@@ -31,6 +32,7 @@ export default async function Order({
   params: Promise<{ id: string }>;
   searchParams: Promise<{ ok?: string; err?: string }>;
 }) {
+  await requireAdmin("orders:read");
   const { id } = await params;
   const query = await searchParams;
   const db = supabaseAdmin();

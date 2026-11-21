@@ -1,10 +1,13 @@
+import { requireAdmin } from "@/lib/admin-auth";
 import { supabaseAdmin } from "@/lib/supabase";
 import { createAgency, toggleAgency } from "../../actions";
 import { Flash } from "../flash";
 
 export const metadata = { title: "Agences", robots: { index: false } };
 
-export default async function Agencies({ searchParams }: { searchParams: Promise<{ ok?: string; err?: string }> }) {
+export default async function Agencies({
+  searchParams }: { searchParams: Promise<{ ok?: string; err?: string }> }) {
+  await requireAdmin("logistics:read");
   const sp = await searchParams;
   const { data } = await supabaseAdmin().from("agencies").select("*").order("name");
   return (

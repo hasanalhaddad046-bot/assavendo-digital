@@ -1,9 +1,12 @@
+import { requireAdmin } from "@/lib/admin-auth";
 import Link from "next/link";
 import { supabaseAdmin } from "@/lib/supabase";
 
 export const metadata = { title: "Commandes", robots: { index: false } };
 
-export default async function Orders({ searchParams }: { searchParams: Promise<{ s?: string }> }) {
+export default async function Orders({
+  searchParams }: { searchParams: Promise<{ s?: string }> }) {
+  await requireAdmin("orders:read");
   const sp = await searchParams;
   let q = supabaseAdmin().from("orders").select("id,number,email,status,total_usd_minor,ship_country,risk_score,created_at").order("created_at", { ascending: false }).limit(200);
   if (sp.s) q = q.eq("status", sp.s);

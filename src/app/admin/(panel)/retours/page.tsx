@@ -1,10 +1,13 @@
+import { requireAdmin } from "@/lib/admin-auth";
 import { supabaseAdmin } from "@/lib/supabase";
 import { updateRma, refundRma } from "../../actions";
 import { Flash } from "../flash";
 
 export const metadata = { title: "Retours", robots: { index: false } };
 
-export default async function Rma({ searchParams }: { searchParams: Promise<{ ok?: string; err?: string }> }) {
+export default async function Rma({
+  searchParams }: { searchParams: Promise<{ ok?: string; err?: string }> }) {
+  await requireAdmin("returns:read");
   const sp = await searchParams;
   const db = supabaseAdmin();
   const { data } = await db.from("rma_requests")

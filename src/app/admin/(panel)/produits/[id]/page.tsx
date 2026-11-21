@@ -1,3 +1,4 @@
+import { requireAdmin } from "@/lib/admin-auth";
 import { notFound } from "next/navigation";
 import { supabaseAdmin } from "@/lib/supabase";
 import { toMajor } from "@/lib/money";
@@ -18,6 +19,7 @@ export default async function Product({
   params: Promise<{ id: string }>;
   searchParams: Promise<{ ok?: string; err?: string }>;
 }) {
+  await requireAdmin("catalog:read");
   const { id } = await params;
   const search = await searchParams;
   const db = supabaseAdmin();

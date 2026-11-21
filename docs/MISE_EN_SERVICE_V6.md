@@ -69,3 +69,40 @@ Ne pas lancer de déploiement ni ouvrir les paiements réels avant :
 - Ajouter l'URL `https://<domaine-public>/compte` et les URL de prévisualisation explicitement autorisées dans la liste Redirect URLs Supabase Auth.
 - Tester création de compte, connexion par lien, expiration, déconnexion, rafraîchissement de session, modification du profil, adresses et historique.
 - Les commandes invitées existantes ne sont pas automatiquement rattachées à un compte ; seules les nouvelles commandes dont la session a été vérifiée sont liées à `orders.user_id`.
+
+
+## Accès administrateur et automatisations V6.1
+
+- Les comptes nominatifs de l'équipe utilisent Supabase Auth par lien e-mail ; chaque compte doit exister dans `admin_members` avec un rôle actif.
+- Le compte propriétaire de secours par secret partagé reste disponible séparément ; il est nécessaire pour provisionner le premier propriétaire Auth si aucun rôle n'est encore enregistré.
+- La clé `SUPABASE_SERVICE_ROLE_KEY` reste indispensable pour inviter, suspendre et rechercher les membres côté serveur. Elle n'est pas présente dans Vercel actuellement.
+- Ajouter `https://<domaine>/admin/auth/callback` aux Redirect URLs de Supabase Auth ; activer l'envoi des invitations et liens magiques via un fournisseur e-mail vérifié.
+- Les routes et actions contrôlent les permissions côté serveur. Le rôle auditeur est en lecture seule ; comptabilité, support, catalogue, achats et logistique ont des portées différentes.
+- Les workflows déclenchés par paiement, revue de risque, transport ou retour sont idempotents et journalisés. Le moteur n'accepte que des notes internes ou des brouillons d'e-mail non envoyés ; achat, paiement, remboursement, changement de prix, publication ou envoi d'e-mail restent interdits.
+- Les exécutions qui ne sont pas des brouillons automatiques nécessitent une approbation humaine. La tâche planifiée reprend les exécutions interrompues et applique un plafond de tentatives.
+- Les workflows doivent être testés sur des événements réels non financiers avant activation à grande échelle.
+
+## Mise à jour du framework
+
+- Next.js a été migré de la ligne 15 vers `16.4.6` ; `middleware.ts` a été migré vers `proxy.ts` conformément à la convention Next.js 16.
+- `npm audit` ne signale aucune vulnérabilité après la mise à niveau.
+
+
+## Mise à niveau framework / sécurité dépendances
+
+- Next.js est mis à niveau vers `16.4.6` ; le middleware a été renommé en `proxy.ts` selon la convention Next.js 16.
+- `npm audit` ne rapporte aucune vulnérabilité après la mise à niveau.
+- Tests vérifiés : 27 tests unitaires, TypeScript et build de production.
+
+
+## Framework et sécurité des dépendances
+
+- Next.js a été mis à niveau vers `16.4.6` et `middleware.ts` migré vers `proxy.ts` selon la convention Next.js 16.
+- `npm audit` ne rapporte aucune vulnérabilité après cette mise à niveau.
+- Dernière vérification : 27 tests unitaires, TypeScript et build de production réussis.
+
+## Automatisations V6.1
+
+- Déclencheurs journalisés et idempotents : paiement vérifié, revue antifraude, transport et demande de retour.
+- Actions autorisées : note interne ou brouillon d’e-mail non envoyé uniquement. Aucun achat, paiement, remboursement, changement de prix, publication ou envoi d’e-mail ne peut être déclenché par le moteur.
+- Les opérations exigeant une approbation attendent la validation humaine. Le cron quotidien reprend les exécutions interrompues ; la cadence quotidienne est conservée pour rester compatible avec l’offre Vercel observée.

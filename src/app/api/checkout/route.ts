@@ -6,6 +6,7 @@ import { validateAddress, normalizePhone } from "@/lib/address";
 import { checkAnonymizer } from "@/lib/ipcheck";
 import { rateLimit, clientIp } from "@/lib/ratelimit";
 import { toMinor } from "@/lib/money";
+import { dispatchWorkflowEvent } from "@/lib/workflow-service";
 import { getCustomerFromRequest } from "@/lib/customer-auth";
 
 export const runtime = "nodejs";
@@ -314,6 +315,12 @@ export async function POST(req: Request) {
 
   if (decision.action === "manual_review") {
     await audit("checkout_manual_review", order.id, { risk, decision });
+    try {
+      await dispatchWorkflowEvent(db,"order_manual_review",{
+        order_id:order.id,order_status:"manual_review",risk_score:risk.score,
+        ship_country:ship,event_type:"order_manual_review",
+      },`manual-review:${order.id}`);
+    } catch(error) { console.error("Workflow dispatch failed after checkout manual review",error); }
     return Response.json({
       manualReview: true,
       orderNumber: order.number,

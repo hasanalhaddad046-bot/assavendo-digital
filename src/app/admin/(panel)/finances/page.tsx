@@ -1,3 +1,4 @@
+import { requireAdmin } from "@/lib/admin-auth";
 import { supabaseAdmin } from "@/lib/supabase";
 import { toMajor, decimals } from "@/lib/money";
 import { Flash } from "../flash";
@@ -17,6 +18,7 @@ export default async function Finance({
 }: {
   searchParams: Promise<{ ok?: string; err?: string }>;
 }) {
+  await requireAdmin("finance:read");
   const query = await searchParams;
   const db = supabaseAdmin();
   const [

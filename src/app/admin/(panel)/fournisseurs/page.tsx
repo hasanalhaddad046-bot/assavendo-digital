@@ -1,10 +1,13 @@
+import { requireAdmin } from "@/lib/admin-auth";
 import { supabaseAdmin } from "@/lib/supabase";
 import { createSupplier, setSupplierTrust } from "../../actions";
 import { Flash } from "../flash";
 
 export const metadata = { title: "Fournisseurs", robots: { index: false } };
 
-export default async function Suppliers({ searchParams }: { searchParams: Promise<{ ok?: string; err?: string }> }) {
+export default async function Suppliers({
+  searchParams }: { searchParams: Promise<{ ok?: string; err?: string }> }) {
+  await requireAdmin("suppliers:read");
   const sp = await searchParams;
   const { data } = await supabaseAdmin().from("suppliers").select("*").order("code");
   return (

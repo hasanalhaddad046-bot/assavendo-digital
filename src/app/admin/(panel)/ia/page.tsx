@@ -1,10 +1,13 @@
+import { requireAdmin } from "@/lib/admin-auth";
 import { supabaseAdmin } from "@/lib/supabase";
 import { launchManusTask, refreshManusTask, sendManusTaskMessage } from "../../actions";
 import { Flash } from "../flash";
 
 export const metadata = { title: "Copilote IA", robots: { index: false } };
 
-export default async function AI({ searchParams }: { searchParams: Promise<{ ok?: string; err?: string }> }) {
+export default async function AI({
+  searchParams }: { searchParams: Promise<{ ok?: string; err?: string }> }) {
+  await requireAdmin("ai:read");
   const query = await searchParams;
   const db = supabaseAdmin();
   const [{ data: runs }, { data: usage }] = await Promise.all([
