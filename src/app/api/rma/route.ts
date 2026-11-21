@@ -12,7 +12,8 @@ export async function POST(req: Request) {
     | null;
   const kinds = ["return", "exchange", "damaged", "lost"];
   const number = Number(b?.number);
-  if (!b || !Number.isInteger(number) || !b.email || !kinds.includes(b.kind ?? "") || !(b.reason ?? "").trim()) {
+  const reason = (b?.reason ?? "").trim();
+  if (!b || !Number.isInteger(number) || !b.email || !kinds.includes(b.kind ?? "") || !reason) {
     return Response.json({ error: "Données invalides." }, { status: 400 });
   }
   const db = supabaseAdmin();
@@ -23,7 +24,7 @@ export async function POST(req: Request) {
   }
   const { data: rma, error } = await db
     .from("rma_requests")
-    .insert({ order_id: order.id, order_item_id: b.itemId || null, kind: b.kind, reason: b.reason.trim().slice(0, 2000) })
+    .insert({ order_id: order.id, order_item_id: b.itemId || null, kind: b.kind, reason: reason.slice(0, 2000) })
     .select("id")
     .single();
   if (error || !rma) return Response.json({ error: "Enregistrement impossible." }, { status: 500 });
