@@ -1,7 +1,7 @@
 # Audit de conformité — Cahier des charges V6 (mis à jour le 21/11/2026)
 
 Légende : ✅ fait · 🟡 partiel · ❌ non fait · 👤 action de votre part
-**Important : ce code n'a pas pu être compilé ici (pas d'accès réseau pour installer les dépendances).** Seuls les 8 tests du moteur (prix, risque, monnaie) ont été exécutés. La compilation réelle aura lieu au premier déploiement Vercel depuis GitHub ; des corrections mineures de build sont possibles.
+**Vérifié le 21/11/2026 :** build Vercel réussi depuis GitHub (commit 9d088b2), pages catalogue, CGV et connexion admin servies (HTTP 200), aucune erreur d'exécution. Non testés en conditions réelles : paiement, webhook, remboursement et e-mails (clés manquantes).
 
 ## Socle
 | Point | État |
@@ -10,7 +10,7 @@ Légende : ✅ fait · 🟡 partiel · ❌ non fait · 👤 action de votre part
 | Schéma 0001 + 0002 appliqués sur Supabase | ✅ |
 | 38 catégories (alimentation désactivée) | ✅ |
 | Dépôt GitHub poussé (main) | ✅ |
-| Déploiement automatique GitHub → Vercel | 👤 Ajouter GitHub dans Vercel (Account Settings → Authentication) puis relier le dépôt |
+| Déploiement depuis GitHub | ✅ ; 👤 pour que chaque push redéploie seul, relier le dépôt au projet dans Vercel → Settings → Git |
 
 ## Argent / prix / devises
 | Moteur de prix déterministe, marge sur prix de vente, frais obligatoires | ✅ testé |
