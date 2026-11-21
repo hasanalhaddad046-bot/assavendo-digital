@@ -33,3 +33,16 @@ input, select, button { font: inherit; padding: 10px 12px; border-radius: 8px; b
 button { background: var(--accent); color: #fff; border: 0; cursor: pointer; font-weight: 600; }
 button[disabled] { opacity: .5; cursor: not-allowed; }
 footer.site { border-top: 1px solid var(--line); padding: 24px 0; margin-top: 32px; }
+table.t { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 14px; }
+table.t th, table.t td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+.row { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
+.pill { display: inline-block; padding: 2px 10px; border-radius: 999px; background: var(--line); font-size: 12px; }
+.err { border-left: 3px solid #c0392b; padding: 10px 14px; background: var(--card); margin: 16px 0; }
+.admin form.buy { max-width: 560px; }
+.admin textarea { font: inherit; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--line); background: var(--card); color: var(--ink); width: 100%; min-height: 90px; }
+.admin nav a { margin-right: 14px; }
+button.sec { background: transparent; color: var(--ink); border: 1px solid var(--line); }
+button.danger { background: #c0392b; }
+.prose h2 { margin-top: 28px; }
+.prose { max-width: 75ch; padding-bottom: 32px; }
+@media print { header.site, footer.site, .noprint { display: none; } body { background: #fff; color: #000; } }

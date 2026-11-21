@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import { supabaseAdmin, getSettings, audit } from "./supabase";
+import { queueEmail, siteUrl } from "./mail";
 
 const API = "https://api.paystack.co";
 
@@ -113,7 +114,44 @@ export async function processVerifiedPayment(reference: string): Promise<void> {
     .neq("status", "paid_verified")
     .select("id");
   if (changed && changed.length === 1) {
-    await db.from("orders").update({ status: "paid_verified" }).eq("id", row.order_id);
-    await audit("payment_verified", reference, { order_id: row.order_id });
+    const settings = await getSettings();
+    const { data: ord } = await db.from("orders").select("email,total_usd_minor,public_token").eq("id", row.order_id).single();
+    const vatPct = settings.vat_registered === "true" ? Number(settings.vat_pct || 0) : 0;
+    const total = Number(ord?.total_usd_minor ?? row.amount_minor);
+    // Prix TTC : la TVA est extraite du total (total * t / (100 + t)).
+    const vat = vatPct > 0 ? Math.round((total * vatPct) / (100 + vatPct)) : 0;
+    await db
+      .from("orders")
+      .update({ status: "paid_verified", paid_at: new Date().toISOString(), vat_usd_minor: vat })
+      .eq("id", row.order_id);
+    const { data: inv } = await db.rpc("assign_invoice_number", { p_order: row.order_id });
+    await db.from("order_events").insert({
+      order_id: row.order_id,
+      kind: "paid",
+      message: "Paiement confirmé. Nous passons la commande auprès de notre partenaire.",
+    });
+    await audit("payment_verified", reference, { order_id: row.order_id, invoice: inv ?? null });
+    if (ord?.email) {
+      await queueEmail({
+        to: ord.email,
+        orderId: row.order_id,
+        subject: "Assavendo Digital — paiement confirmé",
+        body:
+          "Merci, votre paiement est confirmé.\n\n" +
+          `Suivi de commande : ${siteUrl()}/suivi/${ord.public_token}\n` +
+          `Facture : ${siteUrl()}/facture/${ord.public_token}\n`,
+      });
+    }
   }
+}
+
+/** Remboursement Paystack d'une transaction vérifiée (montant en unités mineures, partiel ou total). */
+export async function refundPayment(reference: string, amountMinor: number): Promise<{ id: string }> {
+  if (!secret()) throw new Error("PAYSTACK_SECRET_KEY non définie.");
+  const { data: row } = await supabaseAdmin().from("payments").select("*").eq("reference", reference).maybeSingle();
+  if (!row || row.status !== "paid_verified") throw new Error("Paiement non vérifié : remboursement refusé.");
+  if (amountMinor <= 0 || amountMinor > Number(row.amount_minor)) throw new Error("Montant de remboursement invalide.");
+  const d = await call("POST", "/refund", { transaction: reference, amount: amountMinor });
+  await audit("refund_requested", reference, { amountMinor, id: d?.id ?? null });
+  return { id: String(d?.id ?? "") };
 }

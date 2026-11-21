@@ -2,30 +2,43 @@ import { supabaseAdmin, getSettings, audit } from "@/lib/supabase";
 import { initializePayment, canCharge } from "@/lib/paystack";
 import { scoreRisk, decideRisk, type VpnPolicy } from "@/lib/risk";
 import { getFx } from "@/lib/fx";
+import { validateAddress, normalizePhone } from "@/lib/address";
+import { checkAnonymizer } from "@/lib/ipcheck";
+import { rateLimit, clientIp } from "@/lib/ratelimit";
 
 export const runtime = "nodejs";
 
 interface Body {
-  productId?: string;
-  qty?: number;
+  items?: { productId?: string; qty?: number }[];
   email?: string;
   shipCountry?: string;
   address?: { name?: string; phone?: string; line1?: string; city?: string; region?: string; postal?: string };
+  acceptTerms?: boolean;
 }
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export async function POST(req: Request) {
+  const ip = clientIp(req);
+  if (!rateLimit(`checkout:${ip}`, 10, 10 * 60_000)) {
+    return Response.json({ error: "Trop de tentatives. Réessayez dans quelques minutes." }, { status: 429 });
+  }
   const body = (await req.json().catch(() => null)) as Body | null;
-  if (!body?.productId || !body.email || !EMAIL.test(body.email) || !/^[A-Za-z]{2}$/.test(body.shipCountry ?? "")) {
+  if (!body?.email || !EMAIL.test(body.email) || !/^[A-Za-z]{2}$/.test(body.shipCountry ?? "")) {
     return Response.json({ error: "Données invalides." }, { status: 400 });
   }
-  const qty = Math.min(Math.max(Math.floor(body.qty ?? 1), 1), 20);
+  if (!body.acceptTerms) {
+    return Response.json({ error: "Vous devez accepter les conditions générales de vente." }, { status: 400 });
+  }
+  const rawItems = (body.items ?? []).slice(0, 20);
+  if (rawItems.length === 0) return Response.json({ error: "Panier vide." }, { status: 400 });
   const a = body.address ?? {};
   if (!a.name || !a.phone || !a.line1 || !a.city) {
     return Response.json({ error: "Adresse de livraison incomplète." }, { status: 400 });
   }
   const ship = body.shipCountry!.toUpperCase();
+  const addrErr = validateAddress(ship, a.phone, a.postal);
+  if (addrErr) return Response.json({ error: addrErr }, { status: 400 });
 
   const settings = await getSettings();
   if (!canCharge(settings, true)) {
@@ -37,32 +50,65 @@ export async function POST(req: Request) {
   }
 
   const db = supabaseAdmin();
-  // Prix lu en base, jamais envoyé par le navigateur.
-  const { data: product } = await db
-    .from("products")
-    .select("id,price_usd_minor,status,kind")
-    .eq("id", body.productId)
-    .eq("status", "published")
-    .maybeSingle();
-  if (!product || !product.price_usd_minor) {
-    return Response.json({ error: "Produit indisponible." }, { status: 404 });
+  // Regroupe les lignes identiques ; les prix viennent de la base, jamais du navigateur.
+  const wanted = new Map<string, number>();
+  for (const it of rawItems) {
+    if (!it.productId) continue;
+    const q = Math.min(Math.max(Math.floor(it.qty ?? 1), 1), 20);
+    wanted.set(it.productId, Math.min((wanted.get(it.productId) ?? 0) + q, 20));
   }
-
-  // Offre vérifiée qui dessert ce pays (instantané conservé avec la ligne de commande).
+  const ids = [...wanted.keys()];
+  const { data: products } = await db
+    .from("products")
+    .select("id,name,price_usd_minor,status,kind")
+    .in("id", ids)
+    .eq("status", "published");
+  if (!products || products.length !== ids.length || products.some((p) => !p.price_usd_minor)) {
+    return Response.json({ error: "Un article n'est plus disponible." }, { status: 404 });
+  }
   const { data: offers } = await db
     .from("offers")
-    .select("id,supplier_id,supplier_sku,variant,price_minor,currency,fulfilment_mode,destinations,source_url")
-    .eq("product_id", product.id)
+    .select("id,product_id,supplier_id,supplier_sku,variant,price_minor,currency,fulfilment_mode,destinations,source_url")
+    .in("product_id", ids)
     .eq("status", "verified");
-  const offer = (offers ?? []).find((o) => !o.destinations?.length || o.destinations.includes(ship));
-  if (product.kind === "physical" && !offer) {
-    return Response.json({ error: "Livraison indisponible vers ce pays." }, { status: 422 });
+  const { data: rules } = await db.from("delivery_rules").select("*").in("product_id", ids).eq("country", ship);
+
+  let itemsTotal = 0;
+  let shipping = 0;
+  const lines: Record<string, unknown>[] = [];
+  for (const p of products) {
+    const qty = wanted.get(p.id)!;
+    let offer = null;
+    let duty: string | null = null;
+    if (p.kind === "physical") {
+      offer = (offers ?? []).find((o) => o.product_id === p.id && (!o.destinations?.length || o.destinations.includes(ship))) ?? null;
+      const rule = (rules ?? []).find((r) => r.product_id === p.id);
+      if (!offer || !rule) {
+        return Response.json({ error: `« ${p.name} » n'est pas livrable vers ce pays.` }, { status: 422 });
+      }
+      duty = rule.duty_mode;
+      shipping += Number(rule.shipping_usd_minor); // frais par ligne, indépendants de la quantité
+    }
+    itemsTotal += Number(p.price_usd_minor) * qty;
+    lines.push({
+      product_id: p.id, product_name: p.name, qty, unit_usd_minor: p.price_usd_minor,
+      offer_snapshot: offer, duty_mode: duty,
+    });
   }
+  const totalMinor = itemsTotal + shipping;
 
   // Risque : signaux serveur uniquement.
   const ipCountry = req.headers.get("x-vercel-ip-country") ?? undefined;
-  const totalMinor = Number(product.price_usd_minor) * qty;
-  const signals = { ipCountry, shipCountry: ship, highValue: totalMinor >= 50_000 };
+  const anon = await checkAnonymizer(ip);
+  const since = new Date(Date.now() - 3600_000).toISOString();
+  const { count: recent } = await db
+    .from("orders").select("id", { count: "exact", head: true })
+    .eq("email", body.email).gte("created_at", since);
+  const signals = {
+    ipCountry, shipCountry: ship, highValue: totalMinor >= 50_000,
+    anonymizer: anon?.anonymizer, anonymizerConfidence: anon?.confidence,
+    ordersLastHour: recent ?? 0,
+  };
   const risk = scoreRisk(signals);
   const decision = decideRisk(risk, signals, (settings.vpn_policy as VpnPolicy) || "challenge");
   if (decision.action === "block_checkout" || decision.action === "block_site") {
@@ -75,8 +121,9 @@ export async function POST(req: Request) {
     .insert({
       email: body.email,
       ship_country: ship,
-      ship_address: a,
+      ship_address: { ...a, phone: normalizePhone(a.phone) },
       total_usd_minor: totalMinor,
+      shipping_usd_minor: shipping,
       risk_score: risk.score,
       risk_reasons: risk.reasons,
       status: decision.action === "manual_review" ? "manual_review" : "awaiting_payment",
@@ -85,13 +132,8 @@ export async function POST(req: Request) {
     .single();
   if (oErr || !order) return Response.json({ error: "Commande impossible." }, { status: 500 });
 
-  await db.from("order_items").insert({
-    order_id: order.id,
-    product_id: product.id,
-    qty,
-    unit_usd_minor: product.price_usd_minor,
-    offer_snapshot: offer ?? null,
-  });
+  await db.from("order_items").insert(lines.map((l) => ({ ...l, order_id: order.id })));
+  await db.from("order_events").insert({ order_id: order.id, kind: "created", message: "Commande enregistrée, en attente de paiement." });
 
   try {
     const fx = await getFx();

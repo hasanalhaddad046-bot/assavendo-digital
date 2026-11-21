@@ -4,7 +4,8 @@ import type { Metadata } from "next";
 import { supabasePublic } from "@/lib/supabase";
 import { getFx, usdToLocal, currencyForCountry } from "@/lib/fx";
 import { format, toMajor } from "@/lib/money";
-import BuyForm from "./buy-form";
+import { AddToCart } from "@/components/cart";
+import { supabaseAdmin } from "@/lib/supabase";
 
 export const revalidate = 300;
 
@@ -52,7 +53,33 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
           Les droits et taxes à l'importation éventuels vous sont indiqués avant paiement lorsqu'ils sont connus.
         </p>
       )}
-      <BuyForm productId={p.id} />
+      <DeliveryTable productId={p.id} kind={p.kind} />
+      <div className="row"><AddToCart product={{ id: p.id, slug: p.slug, name: p.name, priceMinor: Number(p.price_usd_minor) }} /></div>
     </article>
+  );
+}
+
+async function DeliveryTable({ productId, kind }: { productId: string; kind: string }) {
+  if (kind !== "physical") return <p className="muted">Livraison numérique ou prestation : aucun envoi physique.</p>;
+  let rules: { country: string; duty_mode: string; shipping_usd_minor: number; days_min: number | null; days_max: number | null }[] = [];
+  try {
+    const { data } = await supabaseAdmin().from("delivery_rules").select("country,duty_mode,shipping_usd_minor,days_min,days_max").eq("product_id", productId).order("country");
+    rules = (data ?? []) as typeof rules;
+  } catch { /* indisponible */ }
+  if (rules.length === 0) return <p className="notice">Livraison pas encore ouverte pour cet article.</p>;
+  return (
+    <table className="t">
+      <thead><tr><th>Pays</th><th>Livraison</th><th>Délai</th><th>Droits et taxes</th></tr></thead>
+      <tbody>
+        {rules.map((r) => (
+          <tr key={r.country}>
+            <td>{r.country}</td>
+            <td>{format(toMajor(Number(r.shipping_usd_minor), "USD"), "USD")}</td>
+            <td>{r.days_min ? `${r.days_min}–${r.days_max} j` : "—"}</td>
+            <td>{r.duty_mode === "DDP" ? "Inclus (DDP)" : "Possiblement à votre charge à la réception (DAP)"}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
   );
 }
