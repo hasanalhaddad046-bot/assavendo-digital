@@ -94,3 +94,7 @@ Ne pas lancer de déploiement ni ouvrir les paiements réels avant :
 - Actions autorisées : note interne ou brouillon d’e-mail non envoyé uniquement. Aucun achat, paiement, remboursement, changement de prix, publication ou envoi d’e-mail ne peut être déclenché par le moteur.
 - Les opérations exigeant une approbation attendent la validation humaine. Le cron quotidien reprend les exécutions interrompues ; la fréquence reste quotidienne pour respecter l’offre Vercel observée.
 - Les exécutions réelles restent à tester une fois les secrets, les comptes e-mail et les données opérationnelles configurés.
+
+
+## Automatisation — échec de livraison numérique
+L'API de téléchargement déclenche désormais le trigger digital_delivery_failed uniquement lorsqu'un actif déjà autorisé manque ou que la génération de l'URL signée échoue. Les URL invalides et les tentatives malformées ne déclenchent pas d'automatisation afin d'éviter de saturer le journal. Le déclencheur est idempotent par actif et motif ; les actions éventuelles restent soumises à la configuration et aux approbations du workflow.

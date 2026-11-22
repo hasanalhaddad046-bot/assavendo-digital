@@ -1,5 +1,6 @@
 import { supabaseAdmin } from "@/lib/supabase";
 import { rateLimit, clientIp } from "@/lib/ratelimit";
+import { dispatchWorkflowEvent } from "@/lib/workflow-service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -37,7 +38,24 @@ export async function GET(req: Request) {
   const bucket = String(item.bucket ?? "");
   const path = String(item.path ?? "");
   const fileName = String(item.file_name ?? "download");
+  const recordDeliveryFailure = async (reason: string) => {
+    const { data: order } = await db.from("orders")
+      .select("id,status").eq("public_token", orderToken).maybeSingle();
+    if (!order) return;
+    try {
+      await dispatchWorkflowEvent(db, "digital_delivery_failed", {
+        order_id: order.id,
+        order_status: order.status,
+        delivery_id: deliveryId,
+        failure_type: reason,
+        event_type: "digital_delivery_failed",
+      }, "digital-delivery-failed:" + deliveryId + ":" + reason);
+    } catch (error) {
+      console.error("Digital delivery workflow dispatch failed", error);
+    }
+  };
   if (!bucket || !path || bucket !== "digital-assets") {
+    await recordDeliveryFailure("protected_asset_missing");
     return Response.json({ error: "Le fichier protégé est introuvable." }, { status: 404 });
   }
 
@@ -45,6 +63,7 @@ export async function GET(req: Request) {
     .from(bucket)
     .createSignedUrl(path, 90, { download: fileName });
   if (signedError || !signed?.signedUrl) {
+    await recordDeliveryFailure("signed_url_generation_failed");
     return Response.json({ error: "Le téléchargement est temporairement indisponible. Contactez le support." }, { status: 503 });
   }
 

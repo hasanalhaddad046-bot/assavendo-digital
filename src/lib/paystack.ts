@@ -410,7 +410,7 @@ async function createPurchaseDrafts(orderId: string): Promise<void> {
     is_public: false,
   }, { onConflict: "event_key", ignoreDuplicates: true });
 }
-async function ensurePaidSideEffects(orderId: string): Promise<void> {
+export async function ensurePaidSideEffects(orderId: string, provider = "Paystack"): Promise<void> {
   const db = supabaseAdmin();
   const { data: order } = await db.from("orders")
     .select("id,email,public_token,number,total_usd_minor,status")
@@ -430,7 +430,7 @@ async function ensurePaidSideEffects(orderId: string): Promise<void> {
     order_id: orderId,
     kind: "paid",
     event_key: `payment_verified:${orderId}`,
-    message: "Paiement confirmé par Paystack. Les brouillons d'approvisionnement sont prêts pour validation.",
+    message: "Paiement confirmé par " + provider + ". Les brouillons d'approvisionnement sont prêts pour validation.",
   }, { onConflict: "event_key", ignoreDuplicates: true });
 
   if (order.email) {

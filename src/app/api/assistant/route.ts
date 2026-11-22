@@ -29,6 +29,14 @@ export async function POST(req: Request) {
   const catalogue = hits
     .map((h) => `- ${h.name} (${(h.price_usd_minor / 100).toFixed(2)} USD) /produits/${h.slug} : ${String(h.description).slice(0, 160)}`)
     .join("\n");
+  if (hits.length === 0) {
+    return Response.json({
+      answer: "Je ne trouve actuellement aucun produit publié correspondant dans le catalogue Assavendo. Je préfère ne pas inventer de référence ni de prix. Contactez notre assistance pour une recherche manuelle.",
+      products: [],
+      fallback: true,
+    });
+  }
+
   const r = await chat("quick_reply", [
     {
       role: "system",

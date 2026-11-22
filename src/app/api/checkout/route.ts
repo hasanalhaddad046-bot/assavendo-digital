@@ -1,5 +1,6 @@
 import { supabaseAdmin, getSettings, audit } from "@/lib/supabase";
 import { initializePayment, canCharge } from "@/lib/paystack";
+import { initializeMalipopayPayment, isMalipopayReadyForDropshipping } from "@/lib/malipopay";
 import { scoreRisk, decideRisk, type VpnPolicy } from "@/lib/risk";
 import { getFx } from "@/lib/fx";
 import { validateAddress, normalizePhone } from "@/lib/address";
@@ -67,12 +68,30 @@ export async function POST(req: Request) {
   if (addrErr) return Response.json({ error: addrErr }, { status: 400 });
 
   const settings = await getSettings();
-  if (!canCharge(settings, true)) {
-    // Verrou d'éligibilité Paystack : on ne crée ni commande ni paiement.
+  const paymentProvider = (process.env.PAYMENT_PROVIDER ?? "paystack").trim().toLowerCase();
+  if (paymentProvider === "paystack" && !canCharge(settings, true)) {
+    // Le profil Paystack Kenya reste verrouillé pour le dropshipping jusqu'à une autorisation écrite.
     return Response.json(
       { error: "Le paiement en ligne n'est pas encore ouvert. Contactez-nous pour commander." },
       { status: 503 },
     );
+  }
+  if (paymentProvider === "malipopay") {
+    if (ship !== "TZ" || displayCurrency !== "TZS") {
+      return Response.json(
+        { error: "MALIPOPAY est réservé aux commandes livrées en Tanzanie et payées en TZS. Choisissez la devise TZS." },
+        { status: 400 },
+      );
+    }
+    if (!isMalipopayReadyForDropshipping()) {
+      return Response.json(
+        { error: "Le paiement tanzanien n'est pas encore activé : le compte marchand et l'activité doivent être approuvés." },
+        { status: 503 },
+      );
+    }
+  }
+  if (paymentProvider !== "paystack" && paymentProvider !== "malipopay") {
+    return Response.json({ error: "Le prestataire de paiement configuré n'est pas pris en charge." }, { status: 503 });
   }
 
   const db = supabaseAdmin();
@@ -329,6 +348,40 @@ export async function POST(req: Request) {
   }
 
   try {
+    if (paymentProvider === "malipopay") {
+      const rate = fx?.rates?.TZS ?? NaN;
+      if (!fx?.fresh || !Number.isFinite(rate) || rate <= 0) {
+        return Response.json({ error: "Le taux USD/TZS fiable est temporairement indisponible. Réessayez plus tard." }, { status: 503 });
+      }
+      // MALIPOPAY demande un montant en TZS entiers ; l'arrondi est toujours vers le haut et archivé.
+      const amountTzsWhole = Math.ceil((totalMinor / 100) * rate);
+      if (!Number.isSafeInteger(amountTzsWhole) || amountTzsWhole <= 0) {
+        return Response.json({ error: "Le montant converti en TZS est invalide." }, { status: 503 });
+      }
+      const pay = await initializeMalipopayPayment({
+        orderId: order.id,
+        orderNumber: order.number,
+        customerPhone: normalizePhone(a.phone),
+        amountTzsWhole,
+        fxSnapshot: {
+          base: "USD",
+          quote: "TZS",
+          rate,
+          source: fx.sources.TZS ?? "unknown",
+          fetchedAt: new Date(fx.fetchedAt).toISOString(),
+          usdAmountMinor: totalMinor,
+          tzsAmountWhole: amountTzsWhole,
+          rounding: "ceil_to_whole_TZS",
+        },
+      });
+      return Response.json({
+        url: pay.checkoutUrl,
+        provider: "malipopay",
+        chargedCurrency: "TZS",
+        chargedAmountWhole: amountTzsWhole,
+        reference: pay.reference,
+      });
+    }
     const pay = await initializePayment({
       orderId: order.id,
       email: body.email,
@@ -340,7 +393,7 @@ export async function POST(req: Request) {
         displayCurrency, displayFxSnapshot,
       } : { base: "USD", displayCurrency, displayFxSnapshot },
     });
-    return Response.json({ url: pay.authorizationUrl });
+    return Response.json({ url: pay.authorizationUrl, provider: "paystack", chargedCurrency: "USD", chargedAmountMinor: totalMinor });
   } catch (e) {
     await audit("checkout_init_failed", order.id, String(e));
     return Response.json({ error: "Paiement indisponible pour le moment." }, { status: 502 });

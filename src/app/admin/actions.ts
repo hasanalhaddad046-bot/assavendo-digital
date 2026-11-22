@@ -1542,6 +1542,10 @@ export async function assignPurchaseAgency(f: FormData) {
 
 export async function recordPaymentSettlement(f: FormData) {
   await requireAdmin("finance:write");
+  const provider = str(f, "provider").toLowerCase() || "paystack";
+  if (provider !== "paystack" && provider !== "malipopay") {
+    back("/admin/finances", "Prestataire de règlement non pris en charge.", true);
+  }
   const reference = str(f, "provider_settlement_id").slice(0, 160);
   const currency = str(f, "currency").toUpperCase();
   const statementReference = str(f, "statement_reference").slice(0, 200);
@@ -1577,10 +1581,11 @@ export async function recordPaymentSettlement(f: FormData) {
 
   const db = supabaseAdmin();
   const { data: payments } = await db.from("payments")
-    .select("id,reference,order_id,amount_minor,currency,status,settled_at")
+    .select("id,reference,order_id,amount_minor,currency,status,settled_at,provider")
+    .eq("provider", provider)
     .in("reference", parsed.map((item) => item.reference));
   if (!payments || payments.length !== parsed.length) {
-    back("/admin/finances", "Une ou plusieurs transactions Paystack sont introuvables.", true);
+    back("/admin/finances", "Une ou plusieurs transactions de ce prestataire sont introuvables.", true);
   }
   const byReference = new Map(payments.map((payment) => [payment.reference, payment]));
   let linkedGross = 0;
@@ -1617,7 +1622,7 @@ export async function recordPaymentSettlement(f: FormData) {
 
   const now = new Date().toISOString();
   const { data: settlement, error } = await db.from("payment_settlements").insert({
-    provider: "paystack",
+    provider,
     provider_settlement_id: reference,
     currency,
     gross_amount_minor: grossMinor,
@@ -1650,10 +1655,17 @@ export async function recordPaymentSettlement(f: FormData) {
     back("/admin/finances", "Le règlement a été créé mais ses transactions n'ont pas été reliées. Statut marqué failed pour investigation.", true);
   }
 
-  if (confirmReceived) {
-    await db.from("payments").update({ settled_at: now }).in("id", settlementItems.map((item) => item.payment_id));
+  for (const item of settlementItems) {
+    await db.from("payments").update({
+      provider_fee_minor: item.fee_minor,
+      provider_net_minor: item.amount_minor - item.fee_minor,
+      ...(confirmReceived
+        ? { settled_at: now, settlement_status: "bank_settled" }
+        : { settlement_status: provider === "malipopay" ? "wallet_credited" : "unconfirmed" }),
+    }).eq("id", item.payment_id).eq("provider", provider);
   }
   await audit("payment_settlement_recorded", reference, {
+    provider,
     settlement_id: settlement.id,
     currency,
     gross_minor: grossMinor,

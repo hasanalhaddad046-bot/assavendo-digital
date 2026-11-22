@@ -26,7 +26,7 @@ export default async function Finance({
     { data: settlements },
     { data: adjustments },
   ] = await Promise.all([
-    db.from("payments").select("id,reference,order_id,amount_minor,currency,status,provider_status,verified_at,settled_at,orders(number,email)")
+    db.from("payments").select("id,reference,order_id,provider,amount_minor,currency,status,provider_status,provider_fee_minor,provider_net_minor,settlement_status,verified_at,settled_at,orders(number,email)")
       .order("created_at", { ascending: false }).limit(100),
     db.from("payment_settlements").select("*").order("created_at", { ascending: false }).limit(50),
     db.from("finance_adjustments").select("*").order("incurred_at", { ascending: false }).limit(100),
@@ -35,6 +35,18 @@ export default async function Finance({
   const verified = (payments ?? []).filter((payment) => payment.status === "paid_verified");
   const settled = verified.filter((payment) => !!payment.settled_at);
   const outstanding = verified.filter((payment) => !payment.settled_at);
+  const walletCredited = verified.filter((payment) => payment.settlement_status === "wallet_credited");
+  const walletGroupByCurrency = (rows: typeof payments) => {
+    const totals = new Map<string, number>();
+    for (const row of rows ?? []) {
+      const currency = String(row.currency).trim().toUpperCase();
+      const net = row.provider_net_minor === null || row.provider_net_minor === undefined
+        ? Number(row.amount_minor) - Number(row.provider_fee_minor ?? 0)
+        : Number(row.provider_net_minor);
+      totals.set(currency, (totals.get(currency) ?? 0) + net);
+    }
+    return [...totals.entries()];
+  };
   const groupByCurrency = (rows: typeof payments) => {
     const totals = new Map<string, number>();
     for (const row of rows ?? []) {
@@ -49,8 +61,8 @@ export default async function Finance({
       <h1>Trésorerie, règlements et rapprochement</h1>
       <Flash ok={query.ok} err={query.err} />
       <p className="muted">
-        Un paiement confirmé par Paystack ne signifie pas que les fonds sont déjà crédités sur le compte bancaire.
-        Le statut « settled » n'est enregistré qu'après rapprochement avec un relevé ou justificatif réel.
+        Un paiement confirmé par un prestataire ne signifie pas que les fonds sont déjà crédités sur le compte bancaire.
+        Pour MALIPOPAY, le net peut d'abord être disponible dans le portefeuille marchand. Le règlement bancaire n'est confirmé qu'après rapprochement avec un relevé ou justificatif réel.
       </p>
 
       <div className="grid">
@@ -65,6 +77,11 @@ export default async function Finance({
           <span className="muted">{settled.length} transaction(s)</span>
         </div>
         <div className="notice">
+          <strong>Crédité au portefeuille marchand</strong>
+          {walletGroupByCurrency(walletCredited).map(([currency, total]) => <p key={currency}>{money(total, currency)}</p>)}
+          <span className="muted">{walletCredited.length} transaction(s) — non assimilées à un dépôt bancaire</span>
+        </div>
+        <div className="notice">
           <strong>À rapprocher</strong>
           {groupByCurrency(outstanding).map(([currency, total]) => <p key={currency}>{money(total, currency)}</p>)}
           <span className="muted">{outstanding.length} transaction(s)</span>
@@ -73,30 +90,34 @@ export default async function Finance({
 
       <h2>Transactions</h2>
       <table className="t">
-        <thead><tr><th>Référence</th><th>Commande</th><th>Montant</th><th>Statut prestataire</th><th>Vérifié</th><th>Règlement bancaire</th></tr></thead>
+        <thead><tr><th>Référence</th><th>Prestataire</th><th>Commande</th><th>Brut</th><th>Frais</th><th>Net estimé / connu</th><th>Statut paiement</th><th>Portefeuille</th><th>Règlement bancaire</th></tr></thead>
         <tbody>
           {(payments ?? []).map((payment) => {
             const order = Array.isArray(payment.orders) ? payment.orders[0] : payment.orders;
             return (
             <tr key={payment.id}>
               <td>{payment.reference}</td>
+              <td>{String(payment.provider ?? "paystack").toUpperCase()}</td>
               <td>{order?.number ?? payment.order_id}</td>
               <td>{money(payment.amount_minor, String(payment.currency).trim())}</td>
-              <td><span className="pill">{payment.status}</span> {payment.provider_status ?? ""}</td>
-              <td>{payment.verified_at ? new Date(payment.verified_at).toLocaleString("fr-FR") : "—"}</td>
+              <td>{payment.provider_fee_minor === null || payment.provider_fee_minor === undefined ? "À confirmer" : money(payment.provider_fee_minor, String(payment.currency).trim())}</td>
+              <td>{payment.provider_net_minor === null || payment.provider_net_minor === undefined ? "À confirmer" : money(payment.provider_net_minor, String(payment.currency).trim())}</td>
+              <td><span className="pill">{payment.status}</span><br />{payment.provider_status ?? ""}</td>
+              <td>{payment.settlement_status === "wallet_credited" ? "Crédité" : payment.settlement_status === "manual_review" ? "Revue" : "Non confirmé"}</td>
               <td>{payment.settled_at ? new Date(payment.settled_at).toLocaleString("fr-FR") : "En attente"}</td>
             </tr>
           ); })}
         </tbody>
       </table>
 
-      <h2>Enregistrer un règlement Paystack</h2>
+      <h2>Enregistrer un règlement prestataire</h2>
       <p className="muted">
         Montants du détail des transactions au format : RÉFÉRENCE_PAIEMENT,FRAIS_EN_UNITÉS_MINEURES
-        (par exemple ASV-123,150). Une transaction ne peut être rapprochée qu'une seule fois.
+        (par exemple ASV-123,150). Une transaction ne peut être rapprochée qu'une seule fois pour le même prestataire.
       </p>
       <form className="buy" action={recordPaymentSettlement}>
         <div className="row">
+          <label>Prestataire<select name="provider" defaultValue="malipopay"><option value="malipopay">MALIPOPAY</option><option value="paystack">Paystack</option></select></label>
           <label>Référence du règlement / lot<input name="provider_settlement_id" required /></label>
           <label>Devise<input name="currency" defaultValue="USD" maxLength={3} required /></label>
           <label>Compte bancaire (libellé non sensible)<input name="bank_account_label" /></label>
